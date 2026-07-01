@@ -1,28 +1,740 @@
-import {useState} from 'react';
-import logo from './assets/images/logo-universal.png';
-import './App.css';
-import {Greet} from "../wailsjs/go/main/App";
+import { useEffect, useMemo, useState } from "react";
+import "./App.css";
 
-function App() {
-    const [resultText, setResultText] = useState("Please enter your name below 👇");
-    const [name, setName] = useState('');
-    const updateName = (e: any) => setName(e.target.value);
-    const updateResultText = (result: string) => setResultText(result);
+import type {
+  DownloadRequest,
+  ModelRecord,
+  ServerConfig,
+  ServerStatus,
+} from "./types";
+import { backend, hasBackend } from "./lib/backend";
 
-    function greet() {
-        Greet(name).then(updateResultText);
-    }
+const defaultDownload: DownloadRequest = {
+  repoId: "",
+  filename: "",
+  revision: "main",
+  displayName: "",
+  hfToken: "",
+};
 
-    return (
-        <div id="App">
-            <img src={logo} id="logo" alt="logo"/>
-            <div id="result" className="result">{resultText}</div>
-            <div id="input" className="input-box">
-                <input id="name" className="input" onChange={updateName} autoComplete="off" name="input" type="text"/>
-                <button className="btn" onClick={greet}>Greet</button>
-            </div>
-        </div>
-    )
+const defaultServerConfig: ServerConfig = {
+  modelId: "",
+  host: "127.0.0.1",
+  port: 8080,
+
+  ctxSize: 4096,
+  gpuLayers: 999,
+  threads: 8,
+  batchSize: 512,
+  ubatchSize: 512,
+  parallel: 1,
+
+  flashAttention: true,
+  background: true,
+  extraArgs: "",
+};
+
+const emptyStatus: ServerStatus = {
+  running: false,
+  logTail: [],
+};
+
+function formatBytes(value?: number): string {
+  if (!value || value <= 0) return "-";
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = value;
+  let index = 0;
+
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024;
+    index += 1;
+  }
+
+  return `${size.toFixed(index === 0 ? 0 : 2)} ${units[index]}`;
 }
 
-export default App
+function downloadPercent(model: ModelRecord): number {
+  if (!model.sizeBytes || !model.downloadedBytes) return 0;
+  return Math.max(
+    0,
+    Math.min(100, (model.downloadedBytes / model.sizeBytes) * 100),
+  );
+}
+
+function statusText(state: ModelRecord["state"]): string {
+  switch (state) {
+    case "ready":
+      return "已下载";
+    case "downloading":
+      return "下载中";
+    case "failed":
+      return "失败";
+    case "missing":
+      return "未下载";
+    default:
+      return state;
+  }
+}
+
+function inferName(repoId: string, filename: string): string {
+  const repoName = repoId.split("/").filter(Boolean).pop() ?? repoId;
+  const fileName = filename.replace(/\.gguf$/i, "");
+  return fileName ? `${repoName} / ${fileName}` : repoName;
+}
+
+function App() {
+  const [models, setModels] = useState<ModelRecord[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState("");
+  const [downloadForm, setDownloadForm] =
+    useState<DownloadRequest>(defaultDownload);
+  const [serverConfig, setServerConfig] =
+    useState<ServerConfig>(defaultServerConfig);
+  const [serverStatus, setServerStatus] =
+    useState<ServerStatus>(emptyStatus);
+
+  const [loading, setLoading] = useState(false);
+  const [operation, setOperation] = useState("");
+  const [error, setError] = useState("");
+
+  const backendReady = hasBackend();
+
+  const selectedModel = useMemo(() => {
+    return models.find((model) => model.id === selectedModelId);
+  }, [models, selectedModelId]);
+
+  const readyModels = useMemo(() => {
+    return models.filter((model) => model.state === "ready");
+  }, [models]);
+
+  async function refresh() {
+    if (!backendReady) return;
+
+    try {
+      const [modelList, status] = await Promise.all([
+        backend.ListModels(),
+        backend.GetServerStatus(),
+      ]);
+
+      setModels(modelList ?? []);
+      setServerStatus(status ?? emptyStatus);
+
+      if (!selectedModelId) {
+        const firstReady = modelList?.find((item) => item.state === "ready");
+        if (firstReady) {
+          setSelectedModelId(firstReady.id);
+          setServerConfig((old) => ({
+            ...old,
+            modelId: firstReady.id,
+          }));
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  useEffect(() => {
+    void refresh();
+
+    const timer = window.setInterval(() => {
+      void refresh();
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendReady, selectedModelId]);
+
+  function updateDownloadForm<K extends keyof DownloadRequest>(
+    key: K,
+    value: DownloadRequest[K],
+  ) {
+    setDownloadForm((old) => ({
+      ...old,
+      [key]: value,
+    }));
+  }
+
+  function updateServerConfig<K extends keyof ServerConfig>(
+    key: K,
+    value: ServerConfig[K],
+  ) {
+    setServerConfig((old) => ({
+      ...old,
+      [key]: value,
+    }));
+  }
+
+  async function startDownload() {
+    setError("");
+
+    const repoId = downloadForm.repoId.trim();
+    const filename = downloadForm.filename.trim();
+
+    if (!repoId) {
+      setError("请填写 Hugging Face repo，例如：TheBloke/Llama-2-7B-Chat-GGUF");
+      return;
+    }
+
+    if (!filename.toLowerCase().endsWith(".gguf")) {
+      setError("当前版本只建议下载 .gguf 文件");
+      return;
+    }
+
+    const req: DownloadRequest = {
+      repoId,
+      filename,
+      revision: downloadForm.revision?.trim() || "main",
+      displayName:
+        downloadForm.displayName?.trim() || inferName(repoId, filename),
+      hfToken: downloadForm.hfToken?.trim() || undefined,
+    };
+
+    try {
+      setLoading(true);
+      setOperation("正在创建下载任务");
+      await backend.StartModelDownload(req);
+      setDownloadForm(defaultDownload);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+      setOperation("");
+    }
+  }
+
+  async function cancelDownload(modelId: string) {
+    try {
+      setError("");
+      setOperation("正在取消下载");
+      await backend.CancelModelDownload(modelId);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setOperation("");
+    }
+  }
+
+  async function deleteModel(modelId: string) {
+    try {
+      setError("");
+      setOperation("正在删除模型");
+      await backend.DeleteModel(modelId);
+
+      if (selectedModelId === modelId) {
+        setSelectedModelId("");
+        setServerConfig((old) => ({
+          ...old,
+          modelId: "",
+        }));
+      }
+
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setOperation("");
+    }
+  }
+
+  async function startServer() {
+    setError("");
+
+    const modelId = selectedModelId || serverConfig.modelId;
+
+    if (!modelId) {
+      setError("请先选择一个已下载模型");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setOperation("正在启动 llama-server");
+
+      await backend.StartLlamaServer({
+        ...serverConfig,
+        modelId,
+      });
+
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+      setOperation("");
+    }
+  }
+
+  async function stopServer() {
+    try {
+      setError("");
+      setOperation("正在停止 llama-server");
+      await backend.StopLlamaServer();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setOperation("");
+    }
+  }
+
+  async function openModelsDir() {
+    try {
+      setError("");
+      await backend.OpenModelsDir();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return (
+    <main className="app">
+      <header className="topbar">
+        <div>
+          <h1>llama control</h1>
+          <p>本地 GGUF 模型管理器 · llama.cpp / llama-server</p>
+        </div>
+
+        <div className="topbarActions">
+          <button className="ghost" onClick={refresh} disabled={!backendReady}>
+            刷新
+          </button>
+          <button
+            className="ghost"
+            onClick={openModelsDir}
+            disabled={!backendReady}
+          >
+            打开模型目录
+          </button>
+        </div>
+      </header>
+
+      {!backendReady && (
+        <section className="notice warning">
+          当前没有检测到 Wails 后端绑定。页面可以编译，但按钮需要 Go 后端实现后才能工作。
+        </section>
+      )}
+
+      {operation && <section className="notice">{operation}</section>}
+
+      {error && (
+        <section className="notice error">
+          <span>{error}</span>
+          <button onClick={() => setError("")}>关闭</button>
+        </section>
+      )}
+
+      <section className="layout">
+        <section className="panel">
+          <div className="panelHeader">
+            <div>
+              <h2>下载模型</h2>
+              <p>从 Hugging Face 下载 GGUF 文件</p>
+            </div>
+          </div>
+
+          <label className="field">
+            <span>Hugging Face Repo</span>
+            <input
+              placeholder="例如：TheBloke/Llama-2-7B-Chat-GGUF"
+              value={downloadForm.repoId}
+              onChange={(event) =>
+                updateDownloadForm("repoId", event.target.value)
+              }
+            />
+          </label>
+
+          <label className="field">
+            <span>GGUF 文件名</span>
+            <input
+              placeholder="例如：model.Q4_K_M.gguf"
+              value={downloadForm.filename}
+              onChange={(event) =>
+                updateDownloadForm("filename", event.target.value)
+              }
+            />
+          </label>
+
+          <div className="twoColumns">
+            <label className="field">
+              <span>Revision</span>
+              <input
+                placeholder="main"
+                value={downloadForm.revision}
+                onChange={(event) =>
+                  updateDownloadForm("revision", event.target.value)
+                }
+              />
+            </label>
+
+            <label className="field">
+              <span>显示名称</span>
+              <input
+                placeholder="留空则自动生成"
+                value={downloadForm.displayName}
+                onChange={(event) =>
+                  updateDownloadForm("displayName", event.target.value)
+                }
+              />
+            </label>
+          </div>
+
+          <label className="field">
+            <span>HF Token</span>
+            <input
+              type="password"
+              placeholder="私有模型才需要"
+              value={downloadForm.hfToken}
+              onChange={(event) =>
+                updateDownloadForm("hfToken", event.target.value)
+              }
+            />
+          </label>
+
+          <button
+            className="primary full"
+            onClick={startDownload}
+            disabled={loading || !backendReady}
+          >
+            开始下载
+          </button>
+        </section>
+
+        <section className="panel modelPanel">
+          <div className="panelHeader">
+            <div>
+              <h2>本地模型</h2>
+              <p>选择一个模型用于启动 llama-server</p>
+            </div>
+
+            <span className="count">{models.length}</span>
+          </div>
+
+          <div className="modelList">
+            {models.length === 0 && (
+              <div className="empty">
+                还没有模型。先填入 Hugging Face repo 和 GGUF 文件名下载。
+              </div>
+            )}
+
+            {models.map((model) => {
+              const percent = downloadPercent(model);
+              const selected = selectedModelId === model.id;
+
+              return (
+                <article
+                  key={model.id}
+                  className={`modelCard ${selected ? "selected" : ""}`}
+                  onClick={() => {
+                    if (model.state === "ready") {
+                      setSelectedModelId(model.id);
+                      setServerConfig((old) => ({
+                        ...old,
+                        modelId: model.id,
+                      }));
+                    }
+                  }}
+                >
+                  <div className="modelMain">
+                    <div>
+                      <h3>{model.displayName}</h3>
+                      <p>{model.repoId}</p>
+                    </div>
+
+                    <span className={`badge ${model.state}`}>
+                      {statusText(model.state)}
+                    </span>
+                  </div>
+
+                  <div className="modelMeta">
+                    <span>{model.filename}</span>
+                    <span>{formatBytes(model.sizeBytes)}</span>
+                  </div>
+
+                  {model.state === "downloading" && (
+                    <div className="progressBlock">
+                      <div className="progressText">
+                        <span>
+                          {formatBytes(model.downloadedBytes)} /{" "}
+                          {formatBytes(model.sizeBytes)}
+                        </span>
+                        <span>{percent.toFixed(1)}%</span>
+                      </div>
+                      <div className="progress">
+                        <div style={{ width: `${percent}%` }} />
+                      </div>
+                    </div>
+                  )}
+
+                  {model.error && (
+                    <pre className="inlineError">{model.error}</pre>
+                  )}
+
+                  <div className="modelActions">
+                    {model.state === "downloading" && (
+                      <button
+                        className="ghost dangerText"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void cancelDownload(model.id);
+                        }}
+                      >
+                        取消
+                      </button>
+                    )}
+
+                    {model.state !== "downloading" && (
+                      <button
+                        className="ghost dangerText"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void deleteModel(model.id);
+                        }}
+                      >
+                        删除
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panelHeader">
+            <div>
+              <h2>运行服务</h2>
+              <p>当前只支持 llama-server</p>
+            </div>
+
+            <span
+              className={`serverDot ${
+                serverStatus.running ? "running" : ""
+              }`}
+            />
+          </div>
+
+          <label className="field">
+            <span>模型</span>
+            <select
+              value={selectedModelId}
+              onChange={(event) => {
+                setSelectedModelId(event.target.value);
+                updateServerConfig("modelId", event.target.value);
+              }}
+            >
+              <option value="">请选择模型</option>
+              {readyModels.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="twoColumns">
+            <label className="field">
+              <span>Host</span>
+              <input
+                value={serverConfig.host}
+                onChange={(event) =>
+                  updateServerConfig("host", event.target.value)
+                }
+              />
+            </label>
+
+            <label className="field">
+              <span>Port</span>
+              <input
+                type="number"
+                value={serverConfig.port}
+                onChange={(event) =>
+                  updateServerConfig("port", Number(event.target.value))
+                }
+              />
+            </label>
+          </div>
+
+          <div className="twoColumns">
+            <label className="field">
+              <span>上下文长度</span>
+              <input
+                type="number"
+                value={serverConfig.ctxSize}
+                onChange={(event) =>
+                  updateServerConfig("ctxSize", Number(event.target.value))
+                }
+              />
+            </label>
+
+            <label className="field">
+              <span>GPU 层数</span>
+              <input
+                type="number"
+                value={serverConfig.gpuLayers}
+                onChange={(event) =>
+                  updateServerConfig("gpuLayers", Number(event.target.value))
+                }
+              />
+            </label>
+          </div>
+
+          <div className="twoColumns">
+            <label className="field">
+              <span>线程数</span>
+              <input
+                type="number"
+                value={serverConfig.threads}
+                onChange={(event) =>
+                  updateServerConfig("threads", Number(event.target.value))
+                }
+              />
+            </label>
+
+            <label className="field">
+              <span>并行请求</span>
+              <input
+                type="number"
+                value={serverConfig.parallel}
+                onChange={(event) =>
+                  updateServerConfig("parallel", Number(event.target.value))
+                }
+              />
+            </label>
+          </div>
+
+          <div className="twoColumns">
+            <label className="field">
+              <span>Batch</span>
+              <input
+                type="number"
+                value={serverConfig.batchSize}
+                onChange={(event) =>
+                  updateServerConfig("batchSize", Number(event.target.value))
+                }
+              />
+            </label>
+
+            <label className="field">
+              <span>uBatch</span>
+              <input
+                type="number"
+                value={serverConfig.ubatchSize}
+                onChange={(event) =>
+                  updateServerConfig("ubatchSize", Number(event.target.value))
+                }
+              />
+            </label>
+          </div>
+
+          <div className="switchRow">
+            <label>
+              <input
+                type="checkbox"
+                checked={serverConfig.flashAttention}
+                onChange={(event) =>
+                  updateServerConfig("flashAttention", event.target.checked)
+                }
+              />
+              启用 Flash Attention
+            </label>
+
+            <label>
+              <input
+                type="checkbox"
+                checked={serverConfig.background}
+                onChange={(event) =>
+                  updateServerConfig("background", event.target.checked)
+                }
+              />
+              后台运行
+            </label>
+          </div>
+
+          <label className="field">
+            <span>额外参数</span>
+            <input
+              placeholder="例如：--verbose --cache-type-k q8_0"
+              value={serverConfig.extraArgs}
+              onChange={(event) =>
+                updateServerConfig("extraArgs", event.target.value)
+              }
+            />
+          </label>
+
+          <div className="serverActions">
+            <button
+              className="primary"
+              onClick={startServer}
+              disabled={
+                loading ||
+                !backendReady ||
+                serverStatus.running ||
+                !selectedModel
+              }
+            >
+              启动 llama-server
+            </button>
+
+            <button
+              className="secondary"
+              onClick={stopServer}
+              disabled={!backendReady || !serverStatus.running}
+            >
+              停止服务
+            </button>
+          </div>
+
+          <section className="statusBox">
+            <div className="statusLine">
+              <span>状态</span>
+              <strong>{serverStatus.running ? "运行中" : "未运行"}</strong>
+            </div>
+
+            {serverStatus.pid && (
+              <div className="statusLine">
+                <span>PID</span>
+                <strong>{serverStatus.pid}</strong>
+              </div>
+            )}
+
+            {serverStatus.endpoint && (
+              <div className="statusLine">
+                <span>Endpoint</span>
+                <strong>{serverStatus.endpoint}</strong>
+              </div>
+            )}
+
+            {serverStatus.modelName && (
+              <div className="statusLine">
+                <span>模型</span>
+                <strong>{serverStatus.modelName}</strong>
+              </div>
+            )}
+          </section>
+        </section>
+      </section>
+
+      <section className="panel logPanel">
+        <div className="panelHeader">
+          <div>
+            <h2>服务日志</h2>
+            <p>展示 llama-server 最近输出</p>
+          </div>
+        </div>
+
+        <pre className="logBox">
+          {(serverStatus.logTail && serverStatus.logTail.length > 0
+            ? serverStatus.logTail
+            : ["暂无日志"]
+          ).join("\n")}
+        </pre>
+      </section>
+    </main>
+  );
+}
+
+export default App;
