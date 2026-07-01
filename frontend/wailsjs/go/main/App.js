@@ -5,3 +5,11 @@
 export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }
+
+export function ListModelGguFiles(arg1) {
+  return window['go']['main']['App']['ListModelGguFiles'](arg1);
+}
+
+export function SearchHuggingFaceModels(arg1) {
+  return window['go']['main']['App']['SearchHuggingFaceModels'](arg1);
+}

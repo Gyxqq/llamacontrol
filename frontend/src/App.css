@@ -210,18 +210,19 @@ input::placeholder {
   padding: 6px 10px;
 }
 
-.modelPanel {
-  min-height: 560px;
+.hint {
+  margin: 0 0 14px;
+  color: #a1a1aa;
+  font-size: 13px;
 }
 
-.modelList {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.modelPanel {
+  min-height: 440px;
 }
 
 .empty {
-  min-height: 220px;
+  margin-top: 16px;
+  min-height: 120px;
   border: 1px dashed #52525b;
   border-radius: 16px;
   color: #a1a1aa;
@@ -232,52 +233,37 @@ input::placeholder {
   padding: 24px;
 }
 
-.modelCard {
-  border: 1px solid rgba(63, 63, 70, 0.9);
+.modelDetail {
+  margin-top: 16px;
   border-radius: 16px;
-  padding: 14px;
+  border: 1px solid rgba(63, 63, 70, 0.9);
+  padding: 16px;
   background: rgba(9, 9, 11, 0.48);
-  cursor: pointer;
-  transition:
-    border-color 0.16s ease,
-    background 0.16s ease,
-    transform 0.16s ease;
-}
-
-.modelCard:hover {
-  border-color: rgba(96, 165, 250, 0.5);
-  background: rgba(24, 24, 27, 0.72);
-}
-
-.modelCard.selected {
-  border-color: #60a5fa;
-  background: rgba(30, 64, 175, 0.22);
-}
-
-.modelMain {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.modelMain h3 {
-  margin: 0;
-  font-size: 15px;
-}
-
-.modelMain p {
-  margin: 5px 0 0;
-  color: #a1a1aa;
-  font-size: 12px;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .modelMeta {
-  margin-top: 12px;
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   color: #a1a1aa;
-  font-size: 12px;
+  font-size: 13px;
+}
+
+.modelMeta > div {
+  display: flex;
+  gap: 8px;
+}
+
+.metaLabel {
+  min-width: 40px;
+  color: #71717a;
+}
+
+.metaPath {
+  word-break: break-all;
 }
 
 .badge {

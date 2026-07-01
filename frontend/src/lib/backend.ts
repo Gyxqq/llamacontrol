@@ -1,5 +1,6 @@
 import type {
   DownloadRequest,
+  HuggingFaceModel,
   ModelRecord,
   ServerConfig,
   ServerStatus,
@@ -64,5 +65,13 @@ export const backend = {
 
   OpenModelsDir(): Promise<void> {
     return call<void>("OpenModelsDir");
+  },
+
+  SearchHuggingFaceModels(query: string): Promise<HuggingFaceModel[]> {
+    return call<HuggingFaceModel[]>("SearchHuggingFaceModels", query);
+  },
+
+  ListModelGguFiles(repoId: string): Promise<string[]> {
+    return call<string[]>("ListModelGguFiles", repoId);
   },
 };

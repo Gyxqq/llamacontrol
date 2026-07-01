@@ -59,3 +59,9 @@ export interface ServerStatus {
   commandLine?: string;
   logTail?: string[];
 }
+
+export interface HuggingFaceModel {
+  id: string;
+  downloads?: number;
+  description?: string;
+}

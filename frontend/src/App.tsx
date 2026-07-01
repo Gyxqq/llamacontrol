@@ -336,25 +336,29 @@ function App() {
           </div>
 
           <label className="field">
-            <span>Hugging Face Repo</span>
-            <input
-              placeholder="例如：TheBloke/Llama-2-7B-Chat-GGUF"
+            <span>选择模型</span>
+            <select
               value={downloadForm.repoId}
-              onChange={(event) =>
-                updateDownloadForm("repoId", event.target.value)
-              }
-            />
+              onChange={(event) => {
+                updateDownloadForm("repoId", event.target.value);
+                updateDownloadForm("filename", "");
+              }}
+            >
+              <option value="">请选择模型仓库</option>
+              <option value="TheBloke/Llama-2-7B-Chat-GGUF">TheBloke/Llama-2-7B-Chat-GGUF</option>
+            </select>
           </label>
 
           <label className="field">
-            <span>GGUF 文件名</span>
-            <input
-              placeholder="例如：model.Q4_K_M.gguf"
+            <span>选择 GGUF 文件</span>
+            <select
               value={downloadForm.filename}
               onChange={(event) =>
                 updateDownloadForm("filename", event.target.value)
               }
-            />
+            >
+              <option value="">请选择 GGUF 文件</option>
+            </select>
           </label>
 
           <div className="twoColumns">
@@ -412,95 +416,104 @@ function App() {
             <span className="count">{models.length}</span>
           </div>
 
-          <div className="modelList">
-            {models.length === 0 && (
-              <div className="empty">
-                还没有模型。先填入 Hugging Face repo 和 GGUF 文件名下载。
+          <label className="field">
+            <span>选择模型</span>
+            <select
+              value={selectedModelId}
+              onChange={(event) => {
+                const id = event.target.value;
+                setSelectedModelId(id);
+                setServerConfig((old) => ({
+                  ...old,
+                  modelId: id,
+                }));
+              }}
+            >
+              <option value="">请选择模型</option>
+              {models.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.displayName} — {statusText(model.state)}
+                  {model.sizeBytes ? ` (${formatBytes(model.sizeBytes)})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {selectedModel && (
+            <div className="modelDetail">
+              <div className="modelMeta">
+                <div>
+                  <span className="metaLabel">Repo</span>
+                  <span>{selectedModel.repoId}</span>
+                </div>
+                <div>
+                  <span className="metaLabel">文件</span>
+                  <span>{selectedModel.filename}</span>
+                </div>
+                <div>
+                  <span className="metaLabel">大小</span>
+                  <span>{formatBytes(selectedModel.sizeBytes)}</span>
+                </div>
+                {selectedModel.localPath && (
+                  <div>
+                    <span className="metaLabel">路径</span>
+                    <span className="metaPath">{selectedModel.localPath}</span>
+                  </div>
+                )}
               </div>
-            )}
 
-            {models.map((model) => {
-              const percent = downloadPercent(model);
-              const selected = selectedModelId === model.id;
+              <span className={`badge ${selectedModel.state}`}>
+                {statusText(selectedModel.state)}
+              </span>
 
-              return (
-                <article
-                  key={model.id}
-                  className={`modelCard ${selected ? "selected" : ""}`}
-                  onClick={() => {
-                    if (model.state === "ready") {
-                      setSelectedModelId(model.id);
-                      setServerConfig((old) => ({
-                        ...old,
-                        modelId: model.id,
-                      }));
-                    }
-                  }}
-                >
-                  <div className="modelMain">
-                    <div>
-                      <h3>{model.displayName}</h3>
-                      <p>{model.repoId}</p>
-                    </div>
-
-                    <span className={`badge ${model.state}`}>
-                      {statusText(model.state)}
+              {selectedModel.state === "downloading" && (
+                <div className="progressBlock">
+                  <div className="progressText">
+                    <span>
+                      {formatBytes(selectedModel.downloadedBytes)} /{" "}
+                      {formatBytes(selectedModel.sizeBytes)}
                     </span>
+                    <span>{downloadPercent(selectedModel).toFixed(1)}%</span>
                   </div>
-
-                  <div className="modelMeta">
-                    <span>{model.filename}</span>
-                    <span>{formatBytes(model.sizeBytes)}</span>
+                  <div className="progress">
+                    <div
+                      style={{ width: `${downloadPercent(selectedModel)}%` }}
+                    />
                   </div>
-
-                  {model.state === "downloading" && (
-                    <div className="progressBlock">
-                      <div className="progressText">
-                        <span>
-                          {formatBytes(model.downloadedBytes)} /{" "}
-                          {formatBytes(model.sizeBytes)}
-                        </span>
-                        <span>{percent.toFixed(1)}%</span>
-                      </div>
-                      <div className="progress">
-                        <div style={{ width: `${percent}%` }} />
-                      </div>
-                    </div>
-                  )}
-
-                  {model.error && (
-                    <pre className="inlineError">{model.error}</pre>
-                  )}
-
                   <div className="modelActions">
-                    {model.state === "downloading" && (
-                      <button
-                        className="ghost dangerText"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void cancelDownload(model.id);
-                        }}
-                      >
-                        取消
-                      </button>
-                    )}
-
-                    {model.state !== "downloading" && (
-                      <button
-                        className="ghost dangerText"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void deleteModel(model.id);
-                        }}
-                      >
-                        删除
-                      </button>
-                    )}
+                    <button
+                      className="ghost dangerText"
+                      onClick={() => void cancelDownload(selectedModel.id)}
+                    >
+                      取消
+                    </button>
                   </div>
-                </article>
-              );
-            })}
-          </div>
+                </div>
+              )}
+
+              {selectedModel.error && (
+                <pre className="inlineError">{selectedModel.error}</pre>
+              )}
+
+              {selectedModel.state !== "downloading" &&
+                selectedModel.state !== "missing" && (
+                  <div className="modelActions">
+                    <button
+                      className="ghost dangerText"
+                      onClick={() => void deleteModel(selectedModel.id)}
+                    >
+                      删除
+                    </button>
+                  </div>
+                )}
+            </div>
+          )}
+
+          {models.length === 0 && (
+            <div className="empty">
+              还没有模型。先填入 Hugging Face repo 和 GGUF 文件名下载。
+            </div>
+          )}
         </section>
 
         <section className="panel">
