@@ -21,8 +21,8 @@ func main() {
 		Title:     "llamacontrol",
 		Width:     1024,
 		Height:    768,
-		MinWidth:  720,
-		MinHeight: 640,
+		MinWidth:  900,
+		MinHeight: 620,
 		Frameless: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,

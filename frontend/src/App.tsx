@@ -345,42 +345,43 @@ function App() {
         </div>
       </div>
 
-      <header className="topbar">
-        <div>
-          <h1>llama control</h1>
-          <p>本地 GGUF 模型管理器 · llama.cpp / llama-server</p>
-        </div>
+      <div className="appContent">
+        <header className="topbar">
+          <div>
+            <h1>llama control</h1>
+            <p>本地 GGUF 模型管理器 · llama.cpp / llama-server</p>
+          </div>
 
-        <div className="topbarActions">
-          <button className="ghost" onClick={refresh} disabled={!backendReady}>
-            刷新
-          </button>
-          <button
-            className="ghost"
-            onClick={openModelsDir}
-            disabled={!backendReady}
-          >
-            打开模型目录
-          </button>
-        </div>
-      </header>
+          <div className="topbarActions">
+            <button className="ghost" onClick={refresh} disabled={!backendReady}>
+              刷新
+            </button>
+            <button
+              className="ghost"
+              onClick={openModelsDir}
+              disabled={!backendReady}
+            >
+              打开模型目录
+            </button>
+          </div>
+        </header>
 
-      {!backendReady && (
-        <section className="notice warning">
-          当前没有检测到 Wails 后端绑定。页面可以编译，但按钮需要 Go 后端实现后才能工作。
-        </section>
-      )}
+        {!backendReady && (
+          <section className="notice warning">
+            当前没有检测到 Wails 后端绑定。页面可以编译，但按钮需要 Go 后端实现后才能工作。
+          </section>
+        )}
 
-      {operation && <section className="notice">{operation}</section>}
+        {operation && <section className="notice">{operation}</section>}
 
-      {error && (
-        <section className="notice error">
-          <span>{error}</span>
-          <button onClick={() => setError("")}>关闭</button>
-        </section>
-      )}
+        {error && (
+          <section className="notice error">
+            <span>{error}</span>
+            <button onClick={() => setError("")}>关闭</button>
+          </section>
+        )}
 
-      <section className="layout">
+        <section className="layout">
         <section className="panel">
           <div className="panelHeader">
             <div>
@@ -568,9 +569,23 @@ function App() {
               还没有模型。先填入 Hugging Face repo 和 GGUF 文件名下载。
             </div>
           )}
+
+          <section className="modelLog">
+            <div className="modelLogHeader">
+              <h3>服务日志</h3>
+              <span>最近输出</span>
+            </div>
+
+            <pre className="logBox">
+              {(serverStatus.logTail && serverStatus.logTail.length > 0
+                ? serverStatus.logTail
+                : ["暂无日志"]
+              ).join("\n")}
+            </pre>
+          </section>
         </section>
 
-        <section className="panel">
+        <section className="panel serverPanel">
           <div className="panelHeader">
             <div>
               <h2>运行服务</h2>
@@ -584,7 +599,7 @@ function App() {
             />
           </div>
 
-          <label className="field">
+          <label className="field serverModelField">
             <span>模型</span>
             <select
               value={selectedModelId}
@@ -602,7 +617,7 @@ function App() {
             </select>
           </label>
 
-          <div className="twoColumns">
+          <div className="serverAddressGrid">
             <label className="field">
               <span>Host</span>
               <input
@@ -625,9 +640,9 @@ function App() {
             </label>
           </div>
 
-          <div className="twoColumns">
+          <div className="serverParamGrid">
             <label className="field">
-              <span>上下文长度</span>
+              <span>上下文</span>
               <input
                 type="number"
                 value={serverConfig.ctxSize}
@@ -638,7 +653,7 @@ function App() {
             </label>
 
             <label className="field">
-              <span>GPU 层数</span>
+              <span>GPU 层</span>
               <input
                 type="number"
                 value={serverConfig.gpuLayers}
@@ -647,11 +662,9 @@ function App() {
                 }
               />
             </label>
-          </div>
 
-          <div className="twoColumns">
             <label className="field">
-              <span>线程数</span>
+              <span>线程</span>
               <input
                 type="number"
                 value={serverConfig.threads}
@@ -662,7 +675,7 @@ function App() {
             </label>
 
             <label className="field">
-              <span>并行请求</span>
+              <span>并行</span>
               <input
                 type="number"
                 value={serverConfig.parallel}
@@ -671,9 +684,7 @@ function App() {
                 }
               />
             </label>
-          </div>
 
-          <div className="twoColumns">
             <label className="field">
               <span>Batch</span>
               <input
@@ -697,31 +708,7 @@ function App() {
             </label>
           </div>
 
-          <div className="switchRow">
-            <label>
-              <input
-                type="checkbox"
-                checked={serverConfig.flashAttention}
-                onChange={(event) =>
-                  updateServerConfig("flashAttention", event.target.checked)
-                }
-              />
-              启用 Flash Attention
-            </label>
-
-            <label>
-              <input
-                type="checkbox"
-                checked={serverConfig.background}
-                onChange={(event) =>
-                  updateServerConfig("background", event.target.checked)
-                }
-              />
-              后台运行
-            </label>
-          </div>
-
-          <label className="field">
+          <label className="field extraArgsField">
             <span>额外参数</span>
             <input
               placeholder="例如：--verbose --cache-type-k q8_0"
@@ -732,30 +719,56 @@ function App() {
             />
           </label>
 
-          <div className="serverActions">
-            <button
-              className="primary"
-              onClick={startServer}
-              disabled={
-                loading ||
-                !backendReady ||
-                serverStatus.running ||
-                !selectedModel
-              }
-            >
-              启动 llama-server
-            </button>
+          <div className="serverControlRow">
+            <div className="switchRow">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={serverConfig.flashAttention}
+                  onChange={(event) =>
+                    updateServerConfig("flashAttention", event.target.checked)
+                  }
+                />
+                Flash Attention
+              </label>
 
-            <button
-              className="secondary"
-              onClick={stopServer}
-              disabled={!backendReady || !serverStatus.running}
-            >
-              停止服务
-            </button>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={serverConfig.background}
+                  onChange={(event) =>
+                    updateServerConfig("background", event.target.checked)
+                  }
+                />
+                后台
+              </label>
+            </div>
+
+            <div className="serverActions">
+              <button
+                className="primary"
+                onClick={startServer}
+                disabled={
+                  loading ||
+                  !backendReady ||
+                  serverStatus.running ||
+                  !selectedModel
+                }
+              >
+                启动
+              </button>
+
+              <button
+                className="secondary"
+                onClick={stopServer}
+                disabled={!backendReady || !serverStatus.running}
+              >
+                停止
+              </button>
+            </div>
           </div>
 
-          <section className="statusBox">
+          <section className="statusBox compactStatus">
             <div className="statusLine">
               <span>状态</span>
               <strong>{serverStatus.running ? "运行中" : "未运行"}</strong>
@@ -771,35 +784,20 @@ function App() {
             {serverStatus.endpoint && (
               <div className="statusLine">
                 <span>Endpoint</span>
-                <strong>{serverStatus.endpoint}</strong>
+                <strong title={serverStatus.endpoint}>{serverStatus.endpoint}</strong>
               </div>
             )}
 
             {serverStatus.modelName && (
               <div className="statusLine">
                 <span>模型</span>
-                <strong>{serverStatus.modelName}</strong>
+                <strong title={serverStatus.modelName}>{serverStatus.modelName}</strong>
               </div>
             )}
           </section>
         </section>
-      </section>
-
-      <section className="panel logPanel">
-        <div className="panelHeader">
-          <div>
-            <h2>服务日志</h2>
-            <p>展示 llama-server 最近输出</p>
-          </div>
-        </div>
-
-        <pre className="logBox">
-          {(serverStatus.logTail && serverStatus.logTail.length > 0
-            ? serverStatus.logTail
-            : ["暂无日志"]
-          ).join("\n")}
-        </pre>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }
