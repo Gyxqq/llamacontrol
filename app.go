@@ -1640,69 +1640,48 @@ func (a *App) downloadLlamaServerRelease(releaseTag string, assetName string) {
 		return
 	}
 
-	// Find llama-server binary in extracted files
+	// Verify llama-server exists in extracted files
 	serverName := "llama-server"
 	if runtime.GOOS == "windows" {
 		serverName = "llama-server.exe"
 	}
 
-	var serverPath string
+	var foundServer bool
 	filepath.Walk(extractDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
 		if !info.IsDir() && strings.EqualFold(filepath.Base(path), serverName) {
-			serverPath = path
+			foundServer = true
 			return filepath.SkipAll
 		}
 		return nil
 	})
 
-	if serverPath == "" {
+	if !foundServer {
 		// Fallback: search for any executable with "server" in name
 		filepath.Walk(extractDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return nil
 			}
 			if !info.IsDir() && strings.Contains(strings.ToLower(filepath.Base(path)), "server") {
-				serverPath = path
+				foundServer = true
 				return filepath.SkipAll
 			}
 			return nil
 		})
 	}
 
-	if serverPath == "" {
+	if !foundServer {
 		a.failLlamaDownload("解压后未找到 llama-server 可执行文件")
 		return
 	}
 
-	// Copy to binDir
-	destPath := filepath.Join(a.binDir, serverName)
-	log.Infof("llama: installing %s -> %s", serverPath, destPath)
-
-	srcFile, err := os.Open(serverPath)
-	if err != nil {
-		a.failLlamaDownload(fmt.Sprintf("打开源文件失败: %v", err))
+	// Copy ALL extracted files to binDir (not just the binary, to include DLLs etc.)
+	log.Infof("llama: installing all extracted files to %s", a.binDir)
+	if err := copyDirContents(extractDir, a.binDir); err != nil {
+		a.failLlamaDownload(fmt.Sprintf("安装文件失败: %v", err))
 		return
-	}
-	defer srcFile.Close()
-
-	destFile, err := os.Create(destPath)
-	if err != nil {
-		a.failLlamaDownload(fmt.Sprintf("创建目标文件失败: %v", err))
-		return
-	}
-	defer destFile.Close()
-
-	if _, err := io.Copy(destFile, srcFile); err != nil {
-		a.failLlamaDownload(fmt.Sprintf("复制文件失败: %v", err))
-		return
-	}
-
-	// Make executable on Unix
-	if runtime.GOOS != "windows" {
-		os.Chmod(destPath, 0755)
 	}
 
 	// Save version
@@ -1763,18 +1742,16 @@ func (a *App) GetLlamaServerDownloadProgress() LlamaServerDownloadProgress {
 
 // DeleteLlamaServer removes the installed llama-server binary and version file.
 func (a *App) DeleteLlamaServer() error {
-	// Delete the binary
-	for _, name := range []string{"llama-server", "llama-server.exe"} {
-		binPath := filepath.Join(a.binDir, name)
-		if err := os.Remove(binPath); err != nil && !os.IsNotExist(err) {
-			log.Warnf("delete llama-server: failed to remove %s: %v", binPath, err)
-		}
+	// Remove all contents of binDir (llama-server binary, DLLs, version file, etc.)
+	if err := os.RemoveAll(a.binDir); err != nil {
+		log.Errorf("delete llama-server: failed to remove binDir: %v", err)
+		return fmt.Errorf("删除 llama.cpp 目录失败: %w", err)
 	}
 
-	// Delete version file
-	versionPath := filepath.Join(a.binDir, "version.txt")
-	if err := os.Remove(versionPath); err != nil && !os.IsNotExist(err) {
-		log.Warnf("delete llama-server: failed to remove version file: %v", err)
+	// Recreate empty binDir
+	if err := os.MkdirAll(a.binDir, 0755); err != nil {
+		log.Errorf("delete llama-server: failed to recreate binDir: %v", err)
+		return fmt.Errorf("重建 bin 目录失败: %w", err)
 	}
 
 	// Clear the releases cache so listing re-fetches
@@ -1785,7 +1762,7 @@ func (a *App) DeleteLlamaServer() error {
 	a.llamaDlProgress = LlamaServerDownloadProgress{}
 	a.mu.Unlock()
 
-	log.Infof("delete llama-server: removed installed binary")
+	log.Infof("delete llama-server: removed all installed files")
 	return nil
 }
 
@@ -1879,6 +1856,48 @@ func extractArchive(archivePath, destDir string) error {
 	default:
 		return fmt.Errorf("不支持的压缩格式: %s (仅支持 .7z 和 .zip)", ext)
 	}
+}
+
+// copyDirContents recursively copies all files and directories from src to dst.
+// It overwrites existing files and creates dst if it doesn't exist.
+func copyDirContents(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Compute path relative to src
+		relPath, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+
+		destPath := filepath.Join(dst, relPath)
+
+		if info.IsDir() {
+			return os.MkdirAll(destPath, info.Mode())
+		}
+
+		// Copy file contents
+		srcFile, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer srcFile.Close()
+
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			return err
+		}
+
+		destFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode())
+		if err != nil {
+			return err
+		}
+		defer destFile.Close()
+
+		_, err = io.Copy(destFile, srcFile)
+		return err
+	})
 }
 
 // ──────────────────────────────────────────────
