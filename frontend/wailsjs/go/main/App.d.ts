@@ -6,11 +6,13 @@ export function CancelModelDownload(arg1:string):Promise<void>;
 
 export function DeleteModel(arg1:string):Promise<void>;
 
-export function DownloadLlamaServerRelease(arg1:string):Promise<void>;
+export function DownloadLlamaServerRelease(arg1:string,arg2:string):Promise<void>;
 
 export function GetLlamaServerInfo():Promise<main.LlamaServerInfo>;
 
 export function GetServerStatus():Promise<main.ServerStatus>;
+
+export function ListLlamaReleaseAssets(arg1:string):Promise<Array<main.LlamaReleaseAsset>>;
 
 export function ListLlamaServerReleases():Promise<Array<main.LlamaServerRelease>>;
 

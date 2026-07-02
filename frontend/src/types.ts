@@ -77,3 +77,9 @@ export interface LlamaServerRelease {
   name: string;
   publishedAt: string;
 }
+
+export interface LlamaReleaseAsset {
+  name: string;
+  size: number;
+  downloadUrl: string;
+}

@@ -36,6 +36,22 @@ export namespace main {
 	        this.description = source["description"];
 	    }
 	}
+	export class LlamaReleaseAsset {
+	    name: string;
+	    size: number;
+	    downloadUrl: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LlamaReleaseAsset(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.size = source["size"];
+	        this.downloadUrl = source["downloadUrl"];
+	    }
+	}
 	export class LlamaServerInfo {
 	    found: boolean;
 	    path: string;

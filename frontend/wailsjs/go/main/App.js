@@ -10,8 +10,8 @@ export function DeleteModel(arg1) {
   return window['go']['main']['App']['DeleteModel'](arg1);
 }
 
-export function DownloadLlamaServerRelease(arg1) {
-  return window['go']['main']['App']['DownloadLlamaServerRelease'](arg1);
+export function DownloadLlamaServerRelease(arg1, arg2) {
+  return window['go']['main']['App']['DownloadLlamaServerRelease'](arg1, arg2);
 }
 
 export function GetLlamaServerInfo() {
@@ -20,6 +20,10 @@ export function GetLlamaServerInfo() {
 
 export function GetServerStatus() {
   return window['go']['main']['App']['GetServerStatus']();
+}
+
+export function ListLlamaReleaseAssets(arg1) {
+  return window['go']['main']['App']['ListLlamaReleaseAssets'](arg1);
 }
 
 export function ListLlamaServerReleases() {

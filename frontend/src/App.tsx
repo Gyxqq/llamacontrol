@@ -4,6 +4,7 @@ import "./App.css";
 import type {
   DownloadRequest,
   HuggingFaceModel,
+  LlamaReleaseAsset,
   LlamaServerInfo,
   LlamaServerRelease,
   ModelRecord,
@@ -110,6 +111,8 @@ function App() {
   const [llamaInfo, setLlamaInfo] = useState<LlamaServerInfo>({ found: false });
   const [llamaReleases, setLlamaReleases] = useState<LlamaServerRelease[]>([]);
   const [selectedRelease, setSelectedRelease] = useState("");
+  const [releaseAssets, setReleaseAssets] = useState<LlamaReleaseAsset[]>([]);
+  const [selectedAsset, setSelectedAsset] = useState("");
   const [downloadingLlama, setDownloadingLlama] = useState(false);
 
   const backendReady = hasBackend();
@@ -342,15 +345,17 @@ function App() {
   }
 
   async function handleDownloadLlama() {
-    if (!selectedRelease) return;
+    if (!selectedRelease || !selectedAsset) return;
     setDownloadingLlama(true);
     setError("");
     try {
-      await backend.DownloadLlamaServerRelease(selectedRelease);
+      await backend.DownloadLlamaServerRelease(selectedRelease, selectedAsset);
       const info = await backend.GetLlamaServerInfo();
       setLlamaInfo(info);
       if (info.found) {
         setSelectedRelease("");
+        setSelectedAsset("");
+        setReleaseAssets([]);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -417,6 +422,36 @@ function App() {
     checkLlamaServer();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendReady]);
+
+  // Fetch assets when a release version is selected
+  useEffect(() => {
+    if (!selectedRelease) {
+      setReleaseAssets([]);
+      setSelectedAsset("");
+      return;
+    }
+
+    let cancelled = false;
+
+    async function fetchAssets() {
+      try {
+        const assets = await backend.ListLlamaReleaseAssets(selectedRelease);
+        if (!cancelled) {
+          setReleaseAssets(assets ?? []);
+          setSelectedAsset("");
+        }
+      } catch {
+        if (!cancelled) {
+          setReleaseAssets([]);
+          setSelectedAsset("");
+        }
+      }
+    }
+
+    fetchAssets();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRelease]);
 
   return (
     <main className="app">
@@ -684,7 +719,7 @@ function App() {
             ) : (
               <>
                 <p className="hint">
-                  未检测到 llama-server，请选择版本下载安装
+                  未检测到 llama-server，请选择版本和加速类型下载安装
                 </p>
                 <label className="field">
                   <span>选择版本</span>
@@ -708,10 +743,34 @@ function App() {
                     ))}
                   </select>
                 </label>
+                {selectedRelease && (
+                  <label className="field">
+                    <span>选择加速类型</span>
+                    <select
+                      value={selectedAsset}
+                      onChange={(event) =>
+                        setSelectedAsset(event.target.value)
+                      }
+                      disabled={downloadingLlama || releaseAssets.length === 0}
+                    >
+                      <option value="">
+                        {releaseAssets.length > 0
+                          ? "请选择加速类型"
+                          : "加载中..."}
+                      </option>
+                      {releaseAssets.map((a) => (
+                        <option key={a.name} value={a.name}>
+                          {a.name.replace(/\.(zip|7z)$/i, "")}
+                          {a.size > 0 ? ` (${formatBytes(a.size)})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <button
                   className="primary full"
                   onClick={() => void handleDownloadLlama()}
-                  disabled={!selectedRelease || downloadingLlama}
+                  disabled={!selectedRelease || !selectedAsset || downloadingLlama}
                 >
                   {downloadingLlama ? "下载中..." : "下载并安装"}
                 </button>

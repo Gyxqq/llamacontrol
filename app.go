@@ -138,11 +138,18 @@ type LlamaServerRelease struct {
 	PublishedAt string `json:"publishedAt"`
 }
 
+// LlamaReleaseAsset represents a downloadable file in a llama.cpp release.
+type LlamaReleaseAsset struct {
+	Name        string `json:"name"`
+	Size        int64  `json:"size"`
+	DownloadURL string `json:"downloadUrl"`
+}
+
 // ghReleaseAsset is a single asset in a GitHub release.
 type ghReleaseAsset struct {
 	Name        string `json:"name"`
 	Size        int64  `json:"size"`
-	DownloadURL string `json:"download_url"`
+	DownloadURL string `json:"browser_download_url"`
 }
 
 // ghRelease is the raw GitHub API response shape.
@@ -205,14 +212,10 @@ func (a *App) startup(ctx context.Context) {
 // Helpers: metadata persistence
 // ──────────────────────────────────────────────
 
-// appDataDir returns the directory of the executable, so all data
-// (models, metadata) is stored relative to the running binary.
+// appDataDir returns a data directory relative to the current working directory,
+// so the app is portable and can be moved freely.
 func (a *App) appDataDir() (string, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve executable path: %w", err)
-	}
-	return filepath.Dir(exe), nil
+	return os.Getwd()
 }
 
 // loadMetadata reads metadata.json from disk into a.models.
@@ -1347,10 +1350,63 @@ func (a *App) ListLlamaServerReleases() ([]LlamaServerRelease, error) {
 	return releases, nil
 }
 
+// ListLlamaReleaseAssets fetches all platform-compatible assets for a specific release tag.
+func (a *App) ListLlamaReleaseAssets(releaseTag string) ([]LlamaReleaseAsset, error) {
+	log.Debugf("llama: listing assets for release %s", releaseTag)
+
+	apiURL := fmt.Sprintf("https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/%s", url.PathEscape(releaseTag))
+
+	req, err := http.NewRequestWithContext(a.ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "llamacontrol/1.0")
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("请求 GitHub API 失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub API 返回 %d", resp.StatusCode)
+	}
+
+	var release ghRelease
+	if err := json.Unmarshal(body, &release); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	var assets []LlamaReleaseAsset
+	for _, asset := range release.Assets {
+		if platformAssetMatch(asset.Name) {
+			assets = append(assets, LlamaReleaseAsset{
+				Name:        asset.Name,
+				Size:        asset.Size,
+				DownloadURL: asset.DownloadURL,
+			})
+		}
+	}
+
+	if len(assets) == 0 {
+		return nil, fmt.Errorf("未找到适用于当前平台 (%s) 的发布文件", runtime.GOOS)
+	}
+
+	log.Infof("llama: found %d asset(s) for release %s", len(assets), releaseTag)
+	return assets, nil
+}
+
 // DownloadLlamaServerRelease downloads a llama.cpp release, extracts the
 // llama-server binary, and places it in the bin directory.
-func (a *App) DownloadLlamaServerRelease(releaseTag string) error {
-	log.Infof("llama: downloading release %s", releaseTag)
+func (a *App) DownloadLlamaServerRelease(releaseTag string, assetName string) error {
+	log.Infof("llama: downloading release %s, asset %s", releaseTag, assetName)
 
 	// Fetch the specific release
 	apiURL := fmt.Sprintf("https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/%s", url.PathEscape(releaseTag))
@@ -1383,21 +1439,17 @@ func (a *App) DownloadLlamaServerRelease(releaseTag string) error {
 		return fmt.Errorf("解析响应失败: %w", err)
 	}
 
-	// Find the best matching asset for this platform
+	// Find the specific asset by name (user-selected)
 	var bestAsset *ghReleaseAsset
 	for i, asset := range release.Assets {
-		if platformAssetMatch(asset.Name) {
+		if asset.Name == assetName {
 			bestAsset = &release.Assets[i]
-			// Prefer GPU variants (cuda, vulkan) over CPU-only
-			if strings.Contains(strings.ToLower(asset.Name), "cuda") ||
-				strings.Contains(strings.ToLower(asset.Name), "vulkan") {
-				break
-			}
+			break
 		}
 	}
 
 	if bestAsset == nil {
-		return fmt.Errorf("未找到适用于当前平台的发布文件 (%s)", runtime.GOOS)
+		return fmt.Errorf("未找到发布文件: %s (适用于 %s)", assetName, runtime.GOOS)
 	}
 
 	log.Infof("llama: downloading asset: %s (%d bytes)", bestAsset.Name, bestAsset.Size)
