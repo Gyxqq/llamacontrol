@@ -13,6 +13,8 @@ import (
 var assets embed.FS
 
 func main() {
+	log.Infof("main: starting llamacontrol")
+
 	// Create an instance of the app structure
 	app := NewApp()
 
@@ -39,6 +41,8 @@ func main() {
 	})
 
 	if err != nil {
-		println("Error:", err.Error())
+		log.Errorf("main: app exited with error: %v", err)
+	} else {
+		log.Infof("main: app exited cleanly")
 	}
 }

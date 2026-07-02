@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -114,6 +113,7 @@ type ServerStatus struct {
 
 // NewApp creates a new App application struct
 func NewApp() *App {
+	log.Debug("app: instance created")
 	return &App{
 		httpClient: &http.Client{
 			Timeout: 0, // no timeout — downloads can be very long
@@ -131,16 +131,17 @@ func (a *App) startup(ctx context.Context) {
 	// Resolve app data directory
 	appDataDir, err := a.appDataDir()
 	if err != nil {
-		log.Printf("[startup] failed to resolve app data dir: %v", err)
+		log.Errorf("startup: failed to resolve app data dir: %v", err)
 		return
 	}
+	log.Infof("startup: app data directory: %s", appDataDir)
 
 	a.modelsDir = filepath.Join(appDataDir, "models")
 	a.metadataPath = filepath.Join(appDataDir, "metadata.json")
 
 	// Ensure models directory exists
 	if err := os.MkdirAll(a.modelsDir, 0755); err != nil {
-		log.Printf("[startup] failed to create models dir: %v", err)
+		log.Errorf("startup: failed to create models dir: %v", err)
 		return
 	}
 
@@ -149,6 +150,8 @@ func (a *App) startup(ctx context.Context) {
 
 	// Validate local files against metadata
 	a.validateFiles()
+
+	log.Infof("startup: ready, %d model(s) in metadata", len(a.models))
 }
 
 // ──────────────────────────────────────────────
@@ -188,30 +191,35 @@ func (a *App) appDataDir() (string, error) {
 
 // loadMetadata reads metadata.json from disk into a.models.
 func (a *App) loadMetadata() {
+	log.Debugf("metadata: loading from %s", a.metadataPath)
+
 	data, err := os.ReadFile(a.metadataPath)
 	if err != nil {
 		if os.IsNotExist(err) {
+			log.Debug("metadata: file does not exist, starting fresh")
 			a.models = []ModelRecord{}
 			return
 		}
-		log.Printf("[metadata] failed to read: %v", err)
+		log.Warnf("metadata: failed to read: %v", err)
 		a.models = []ModelRecord{}
 		return
 	}
 
 	var models []ModelRecord
 	if err := json.Unmarshal(data, &models); err != nil {
-		log.Printf("[metadata] failed to parse: %v", err)
+		log.Warnf("metadata: failed to parse: %v", err)
 		a.models = []ModelRecord{}
 		return
 	}
 
 	a.models = models
-	log.Printf("[metadata] loaded %d model records", len(a.models))
+	log.Infof("metadata: loaded %d model record(s)", len(a.models))
 }
 
 // saveMetadata atomically writes a.models to metadata.json.
 func (a *App) saveMetadata() error {
+	log.Debugf("metadata: saving %d record(s)", len(a.models))
+
 	data, err := json.MarshalIndent(a.models, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
@@ -266,6 +274,7 @@ func (a *App) modelFilePath(modelID string) string {
 // validateFiles checks each model record's local file and updates state accordingly.
 // Must be called with a.mu held (write lock).
 func (a *App) validateFiles() {
+	log.Debug("validateFiles: starting file validation")
 	changed := false
 
 	for i, m := range a.models {
@@ -317,9 +326,10 @@ func (a *App) validateFiles() {
 
 	if changed {
 		if err := a.saveMetadata(); err != nil {
-			log.Printf("[validateFiles] failed to save metadata: %v", err)
+			log.Errorf("validateFiles: failed to save metadata: %v", err)
 		}
 	}
+	log.Debugf("validateFiles: completed, %d model(s) validated (changed=%v)", len(a.models), changed)
 }
 
 // ──────────────────────────────────────────────
@@ -351,6 +361,8 @@ func (a *App) ListModels() []ModelRecord {
 		// Within same state, sort by display name
 		return result[i].DisplayName < result[j].DisplayName
 	})
+
+	log.Debugf("ListModels: returning %d model(s)", len(result))
 
 	return result
 }
@@ -433,6 +445,8 @@ func (a *App) StartModelDownload(req DownloadRequest) error {
 	// Launch download in background
 	go a.downloadModel(ctx, id, req)
 
+	log.Infof("download: started %s/%s (revision=%s, id=%s)", req.RepoID, req.Filename, req.Revision, id)
+
 	return nil
 }
 
@@ -444,7 +458,7 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 		req.RepoID, url.QueryEscape(req.Revision), url.QueryEscape(req.Filename),
 	)
 
-	log.Printf("[download] starting %s from %s", id, downloadURL)
+	log.Infof("download: starting %s from %s", id, downloadURL)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
@@ -578,7 +592,7 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 			delete(a.activeDownloads, id)
 			a.mu.Unlock()
 
-			log.Printf("[download] completed %s (%d bytes)", id, actualSize)
+			log.Infof("download: completed %s (%d bytes)", id, actualSize)
 			return
 
 		case <-progressTicker.C:
@@ -602,7 +616,7 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 
 // failDownload marks a download as failed and cleans up.
 func (a *App) failDownload(id string, errMsg string) {
-	log.Printf("[download] failed %s: %s", id, errMsg)
+	log.Errorf("download: failed %s: %s", id, errMsg)
 
 	// Clean up partial file
 	partialPath := filepath.Join(a.modelsDir, id+".part")
@@ -640,6 +654,7 @@ func (a *App) CancelModelDownload(modelId string) error {
 
 	// Cancel the context
 	task.cancel()
+	log.Infof("download: cancelled %s", modelId)
 
 	return nil
 }
@@ -684,7 +699,7 @@ func (a *App) DeleteModel(modelId string) error {
 	// Delete the local file
 	modelPath := a.modelFilePath(modelId)
 	if err := os.Remove(modelPath); err != nil && !os.IsNotExist(err) {
-		log.Printf("[delete] failed to remove file %s: %v", modelPath, err)
+		log.Warnf("delete: failed to remove file %s: %v", modelPath, err)
 	}
 
 	// Also clean up any .part file
@@ -698,12 +713,13 @@ func (a *App) DeleteModel(modelId string) error {
 		return fmt.Errorf("保存元数据失败: %w", err)
 	}
 
-	log.Printf("[delete] removed model %s", modelId)
+	log.Infof("delete: removed model %s", modelId)
 	return nil
 }
 
 // OpenModelsDir opens the models directory in the system file manager.
 func (a *App) OpenModelsDir() error {
+	log.Debugf("OpenModelsDir: opening %s", a.modelsDir)
 	if a.modelsDir == "" {
 		return fmt.Errorf("模型目录未初始化")
 	}
@@ -736,6 +752,8 @@ func (a *App) OpenModelsDir() error {
 
 // findLlamaServer locates the llama-server binary.
 func findLlamaServer() (string, error) {
+	log.Debug("server: searching for llama-server binary")
+
 	// Check env override first
 	if path := os.Getenv("LLAMACONTROL_LLAMA_SERVER_PATH"); path != "" {
 		if info, err := os.Stat(path); err == nil && !info.IsDir() {
@@ -845,6 +863,7 @@ func (a *App) GetServerStatus() ServerStatus {
 		status.LogTail = logTail
 	}
 
+	log.Debugf("GetServerStatus: running=%v pid=%d", status.Running, status.PID)
 	return status
 }
 
@@ -896,7 +915,7 @@ func (a *App) StartLlamaServer(config ServerConfig) error {
 	args := buildServerArgs(modelPath, config)
 
 	cmdStr := serverPath + " " + strings.Join(args, " ")
-	log.Printf("[server] starting: %s", cmdStr)
+	log.Infof("server: starting: %s", cmdStr)
 
 	// Create the command
 	cmd := exec.Command(serverPath, args...)
@@ -928,7 +947,7 @@ func (a *App) StartLlamaServer(config ServerConfig) error {
 		scanner := bufio.NewScanner(stdoutPipe)
 		for scanner.Scan() {
 			line := scanner.Text()
-			log.Println("[llama-server]", line)
+			log.Infoln("[llama-server] stdout:", line)
 			addLog(line)
 		}
 	}()
@@ -938,7 +957,7 @@ func (a *App) StartLlamaServer(config ServerConfig) error {
 		scanner := bufio.NewScanner(stderrPipe)
 		for scanner.Scan() {
 			line := scanner.Text()
-			log.Println("[llama-server]", line)
+			log.Infoln("[llama-server] stderr:", line)
 			addLog(line)
 		}
 	}()
@@ -971,7 +990,7 @@ func (a *App) StartLlamaServer(config ServerConfig) error {
 	// Monitor process exit in background
 	go func() {
 		err := cmd.Wait()
-		log.Printf("[server] process exited: %v", err)
+		log.Infof("server: process exited: %v", err)
 
 		a.serverState.mu.Lock()
 		defer a.serverState.mu.Unlock()
@@ -999,11 +1018,11 @@ func (a *App) StopLlamaServer() error {
 	}
 
 	pid := a.serverState.status.PID
-	log.Printf("[server] stopping llama-server (PID: %d)", pid)
+	log.Infof("server: stopping llama-server (PID: %d)", pid)
 
 	// Try graceful shutdown with SIGTERM
 	if err := a.serverState.cmd.Process.Signal(os.Interrupt); err != nil {
-		log.Printf("[server] interrupt failed: %v, trying kill", err)
+		log.Warnf("server: interrupt failed: %v, trying kill", err)
 		if err := a.serverState.cmd.Process.Kill(); err != nil {
 			return fmt.Errorf("终止进程失败: %w", err)
 		}
@@ -1018,9 +1037,9 @@ func (a *App) StopLlamaServer() error {
 
 	select {
 	case <-done:
-		log.Printf("[server] stopped gracefully (PID: %d)", pid)
+		log.Infof("server: stopped gracefully (PID: %d)", pid)
 	case <-time.After(5 * time.Second):
-		log.Printf("[server] graceful shutdown timeout, killing (PID: %d)", pid)
+		log.Warnf("server: graceful shutdown timeout, killing (PID: %d)", pid)
 		if err := a.serverState.cmd.Process.Kill(); err != nil {
 			return fmt.Errorf("强制终止进程失败: %w", err)
 		}
@@ -1057,6 +1076,7 @@ type hfModelRaw struct {
 
 // SearchHuggingFaceModels searches Hugging Face for GGUF model repos
 func (a *App) SearchHuggingFaceModels(query string) ([]HuggingFaceModel, error) {
+	log.Debugf("hf: searching models with query=%q", query)
 	params := url.Values{}
 	params.Set("search", query)
 	params.Set("sort", "downloads")
@@ -1132,6 +1152,7 @@ type fileTreeEntry struct {
 
 // ListModelGguFiles lists all .gguf files in a Hugging Face model repo
 func (a *App) ListModelGguFiles(repoId string) ([]string, error) {
+	log.Debugf("hf: listing GGUF files for repo=%s", repoId)
 	apiURL := fmt.Sprintf("https://huggingface.co/api/models/%s/tree/main?recursive=1", repoId)
 
 	req, err := http.NewRequestWithContext(a.ctx, http.MethodGet, apiURL, nil)
