@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,6 +16,63 @@ import (
 type App struct {
 	ctx context.Context
 	httpClient *http.Client
+}
+
+// ──────────────────────────────────────────────
+// Types matching frontend TypeScript definitions
+// ──────────────────────────────────────────────
+
+// ModelRecord represents a downloaded or downloading model
+type ModelRecord struct {
+	ID              string `json:"id"`
+	DisplayName     string `json:"displayName"`
+	RepoID          string `json:"repoId"`
+	Filename        string `json:"filename"`
+	Revision        string `json:"revision"`
+	LocalPath       string `json:"localPath"`
+	SizeBytes       int64  `json:"sizeBytes"`
+	DownloadedBytes int64  `json:"downloadedBytes"`
+	State           string `json:"state"` // "missing" | "downloading" | "ready" | "failed"
+	Error           string `json:"error"`
+	CreatedAt       string `json:"createdAt"`
+	UpdatedAt       string `json:"updatedAt"`
+}
+
+// DownloadRequest is sent by the frontend to start a model download
+type DownloadRequest struct {
+	RepoID      string `json:"repoId"`
+	Filename    string `json:"filename"`
+	Revision    string `json:"revision"`
+	DisplayName string `json:"displayName"`
+	HfToken     string `json:"hfToken"`
+}
+
+// ServerConfig configures the llama-server process
+type ServerConfig struct {
+	ModelID        string `json:"modelId"`
+	Host           string `json:"host"`
+	Port           int    `json:"port"`
+	CtxSize        int    `json:"ctxSize"`
+	GPULayers      int    `json:"gpuLayers"`
+	Threads        int    `json:"threads"`
+	BatchSize      int    `json:"batchSize"`
+	UbatchSize     int    `json:"ubatchSize"`
+	Parallel       int    `json:"parallel"`
+	FlashAttention bool   `json:"flashAttention"`
+	Background     bool   `json:"background"`
+	ExtraArgs      string `json:"extraArgs"`
+}
+
+// ServerStatus reports the current llama-server state
+type ServerStatus struct {
+	Running     bool     `json:"running"`
+	PID         int      `json:"pid"`
+	Endpoint    string   `json:"endpoint"`
+	ModelID     string   `json:"modelId"`
+	ModelName   string   `json:"modelName"`
+	StartedAt   string   `json:"startedAt"`
+	CommandLine string   `json:"commandLine"`
+	LogTail     []string `json:"logTail"`
 }
 
 // NewApp creates a new App application struct
@@ -32,9 +90,50 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 }
 
-// Greet returns a greeting for the given name
-func (a *App) Greet(name string) string {
-	return fmt.Sprintf("Hello %s, It's show time!", name)
+// ──────────────────────────────────────────────
+// Stub methods — TODO: implement real logic
+// ──────────────────────────────────────────────
+
+// ListModels returns all known models
+func (a *App) ListModels() []ModelRecord {
+	log.Println("[stub] ListModels")
+	return []ModelRecord{}
+}
+
+// StartModelDownload begins downloading a model from Hugging Face
+func (a *App) StartModelDownload(req DownloadRequest) {
+	log.Printf("[stub] StartModelDownload repoId=%s filename=%s", req.RepoID, req.Filename)
+}
+
+// CancelModelDownload cancels an ongoing download
+func (a *App) CancelModelDownload(modelId string) {
+	log.Printf("[stub] CancelModelDownload modelId=%s", modelId)
+}
+
+// DeleteModel removes a local model file
+func (a *App) DeleteModel(modelId string) {
+	log.Printf("[stub] DeleteModel modelId=%s", modelId)
+}
+
+// GetServerStatus returns the llama-server process status
+func (a *App) GetServerStatus() ServerStatus {
+	log.Println("[stub] GetServerStatus")
+	return ServerStatus{Running: false, LogTail: []string{}}
+}
+
+// StartLlamaServer starts the llama-server subprocess
+func (a *App) StartLlamaServer(config ServerConfig) {
+	log.Printf("[stub] StartLlamaServer modelId=%s host=%s port=%d", config.ModelID, config.Host, config.Port)
+}
+
+// StopLlamaServer stops the llama-server subprocess
+func (a *App) StopLlamaServer() {
+	log.Println("[stub] StopLlamaServer")
+}
+
+// OpenModelsDir opens the models directory in the system file manager
+func (a *App) OpenModelsDir() {
+	log.Println("[stub] OpenModelsDir")
 }
 
 // HuggingFaceModel represents a model returned by the HF API search
