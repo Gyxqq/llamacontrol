@@ -18,6 +18,10 @@ export function DownloadLlamaServerRelease(arg1, arg2) {
   return window['go']['main']['App']['DownloadLlamaServerRelease'](arg1, arg2);
 }
 
+export function GetAppLogs() {
+  return window['go']['main']['App']['GetAppLogs']();
+}
+
 export function GetLlamaServerDownloadProgress() {
   return window['go']['main']['App']['GetLlamaServerDownloadProgress']();
 }

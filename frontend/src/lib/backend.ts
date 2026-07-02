@@ -110,4 +110,8 @@ export const backend = {
   DeleteLlamaServer(): Promise<void> {
     return call<void>("DeleteLlamaServer");
   },
+
+  GetAppLogs(): Promise<string[]> {
+    return call<string[]>("GetAppLogs");
+  },
 };

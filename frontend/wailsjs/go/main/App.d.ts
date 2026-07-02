@@ -10,6 +10,8 @@ export function DeleteModel(arg1:string):Promise<void>;
 
 export function DownloadLlamaServerRelease(arg1:string,arg2:string):Promise<void>;
 
+export function GetAppLogs():Promise<Array<string>>;
+
 export function GetLlamaServerDownloadProgress():Promise<main.LlamaServerDownloadProgress>;
 
 export function GetLlamaServerInfo():Promise<main.LlamaServerInfo>;

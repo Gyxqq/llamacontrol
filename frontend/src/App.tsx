@@ -118,6 +118,7 @@ function App() {
   const [loadingFiles, setLoadingFiles] = useState(false);
 
   const [llamaInfo, setLlamaInfo] = useState<LlamaServerInfo>({ found: false });
+  const [appLogs, setAppLogs] = useState<string[]>([]);
   const [llamaReleases, setLlamaReleases] = useState<LlamaServerRelease[]>([]);
   const [selectedRelease, setSelectedRelease] = useState("");
   const [releaseAssets, setReleaseAssets] = useState<LlamaReleaseAsset[]>([]);
@@ -163,17 +164,42 @@ function App() {
     return models.filter((model) => model.state === "downloading");
   }, [models]);
 
+  const displayLogs = useMemo(() => {
+    const lines: string[] = [];
+
+    if (appLogs.length > 0) {
+      const start = Math.max(0, appLogs.length - 100);
+      for (let i = start; i < appLogs.length; i++) {
+        lines.push(appLogs[i]);
+      }
+    }
+
+    if (serverStatus.logTail && serverStatus.logTail.length > 0) {
+      if (lines.length > 0) {
+        lines.push("");
+      }
+      const serverStart = Math.max(0, serverStatus.logTail.length - 30);
+      for (let i = serverStart; i < serverStatus.logTail.length; i++) {
+        lines.push(serverStatus.logTail[i]);
+      }
+    }
+
+    return lines.length > 0 ? lines : ["暂无日志"];
+  }, [appLogs, serverStatus.logTail]);
+
   async function refresh() {
     if (!backendReady) return;
 
     try {
-      const [modelList, status] = await Promise.all([
+      const [modelList, status, logs] = await Promise.all([
         backend.ListModels(),
         backend.GetServerStatus(),
+        backend.GetAppLogs(),
       ]);
 
       setModels(modelList ?? []);
       setServerStatus(status ?? emptyStatus);
+      setAppLogs(logs ?? []);
 
       if (!selectedModelId) {
         const firstReady = modelList?.find((item) => item.state === "ready");
@@ -1013,15 +1039,12 @@ function App() {
 
           <section className="modelLog">
             <div className="modelLogHeader">
-              <h3>服务日志</h3>
+              <h3>运行日志</h3>
               <span>最近输出</span>
             </div>
 
             <pre className="logBox">
-              {(serverStatus.logTail && serverStatus.logTail.length > 0
-                ? serverStatus.logTail
-                : ["暂无日志"]
-              ).join("\n")}
+              {displayLogs.join("\n")}
             </pre>
           </section>
         </section>

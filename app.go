@@ -22,6 +22,7 @@ import (
 	"archive/zip"
 
 	"github.com/bodgit/sevenzip"
+	"github.com/sirupsen/logrus"
 )
 
 // ──────────────────────────────────────────────
@@ -51,6 +52,9 @@ type App struct {
 
 	// llama.cpp download progress
 	llamaDlProgress LlamaServerDownloadProgress
+
+	// App log buffer for frontend log display
+	appLogs *appLogBuffer
 }
 
 // downloadTask tracks an in-flight download for cancellation
@@ -193,6 +197,11 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// Initialize app log buffer and hook into logrus
+	a.appLogs = &appLogBuffer{max: 200}
+	log.AddHook(&appLogHook{buffer: a.appLogs})
+	log.Infof("startup: app logger hook installed")
 
 	// Resolve app data directory
 	appDataDir, err := a.appDataDir()
@@ -358,7 +367,7 @@ func (a *App) validateFiles() {
 					a.models[i].SizeBytes = 0
 					a.models[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 					changed = true
-				}
+			}
 			}
 			continue
 		}
@@ -587,17 +596,17 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 					if _, writeErr := outFile.Write(buf[:n]); writeErr != nil {
 						done <- fmt.Errorf("写入文件失败: %w", writeErr)
 						return
-					}
-					downloaded += int64(n)
 				}
+					downloaded += int64(n)
+			}
 				if readErr != nil {
 					if readErr == io.EOF {
 						done <- nil
-					} else {
+				} else {
 						done <- readErr
-					}
-					return
 				}
+					return
+			}
 			}
 		}
 	}()
@@ -611,7 +620,7 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 				if errors.Is(err, context.Canceled) {
 					a.failDownload(id, "下载已取消")
 					return
-				}
+			}
 				a.failDownload(id, fmt.Sprintf("下载失败: %v", err))
 				return
 			}
@@ -658,10 +667,10 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 					a.models[idx].DownloadedBytes = downloaded
 					if totalSize > 0 {
 						a.models[idx].SizeBytes = totalSize
-					}
+				}
 					a.models[idx].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 					a.saveMetadata()
-				}
+			}
 				a.mu.Unlock()
 				lastSave = downloaded
 			}
@@ -969,6 +978,14 @@ func (a *App) GetServerStatus() ServerStatus {
 	return status
 }
 
+// GetAppLogs returns the accumulated app log entries for the frontend.
+func (a *App) GetAppLogs() []string {
+	if a.appLogs == nil {
+		return []string{}
+	}
+	return a.appLogs.Lines()
+}
+
 // StartLlamaServer starts the llama-server subprocess.
 func (a *App) StartLlamaServer(config ServerConfig) error {
 	// Validate config
@@ -1092,14 +1109,19 @@ func (a *App) StartLlamaServer(config ServerConfig) error {
 	// Monitor process exit in background
 	go func() {
 		err := cmd.Wait()
+		exitMsg := fmt.Sprintf("llama-server 已退出: %v", err)
 		log.Infof("server: process exited: %v", err)
 
 		a.serverState.mu.Lock()
 		defer a.serverState.mu.Unlock()
 
-		// Capture remaining logs
+		// Append exit message to log tail then capture
 		logMu.Lock()
 		a.serverState.status.LogTail = make([]string, len(logTail))
+		if len(logTail) >= 100 {
+			logTail = logTail[1:]
+		}
+		logTail = append(logTail, exitMsg)
 		copy(a.serverState.status.LogTail, logTail)
 		logMu.Unlock()
 
@@ -1784,7 +1806,7 @@ func extractArchive(archivePath, destDir string) error {
 			if f.FileInfo().IsDir() {
 				if err := os.MkdirAll(fpath, 0755); err != nil {
 					return err
-				}
+			}
 				continue
 			}
 
@@ -1826,7 +1848,7 @@ func extractArchive(archivePath, destDir string) error {
 			if f.FileInfo().IsDir() {
 				if err := os.MkdirAll(fpath, 0755); err != nil {
 					return err
-				}
+			}
 				continue
 			}
 
@@ -1857,6 +1879,49 @@ func extractArchive(archivePath, destDir string) error {
 	default:
 		return fmt.Errorf("不支持的压缩格式: %s (仅支持 .7z 和 .zip)", ext)
 	}
+}
+
+// ──────────────────────────────────────────────
+// App log buffer — captures all logrus output for the frontend
+// ──────────────────────────────────────────────
+
+// appLogBuffer is a thread-safe ring buffer for log messages.
+type appLogBuffer struct {
+	mu    sync.Mutex
+	max   int
+	lines []string
+}
+
+func (b *appLogBuffer) Append(level, msg string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	line := "[" + level + "] " + msg
+	if len(b.lines) >= b.max {
+		b.lines = b.lines[1:]
+	}
+	b.lines = append(b.lines, line)
+}
+
+func (b *appLogBuffer) Lines() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	result := make([]string, len(b.lines))
+	copy(result, b.lines)
+	return result
+}
+
+// appLogHook captures all logrus log entries into the app log buffer.
+type appLogHook struct {
+	buffer *appLogBuffer
+}
+
+func (h *appLogHook) Levels() []logrus.Level {
+	return logrus.AllLevels
+}
+
+func (h *appLogHook) Fire(entry *logrus.Entry) error {
+	h.buffer.Append(strings.ToUpper(entry.Level.String()), entry.Message)
+	return nil
 }
 
 func truncateString(s string, maxLen int) string {
