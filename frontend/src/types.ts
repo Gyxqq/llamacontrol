@@ -72,6 +72,19 @@ export interface LlamaServerInfo {
   version?: string;
 }
 
+export interface LlamaServerDownloadProgress {
+  downloading: boolean;
+  releaseTag: string;
+  assetName: string;
+  totalBytes: number;
+  downloadedBytes: number;
+  completed: boolean;
+  error?: string;
+  found: boolean;
+  version?: string;
+  path?: string;
+}
+
 export interface LlamaServerRelease {
   tagName: string;
   name: string;

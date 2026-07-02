@@ -4,9 +4,13 @@ import {main} from '../models';
 
 export function CancelModelDownload(arg1:string):Promise<void>;
 
+export function DeleteLlamaServer():Promise<void>;
+
 export function DeleteModel(arg1:string):Promise<void>;
 
 export function DownloadLlamaServerRelease(arg1:string,arg2:string):Promise<void>;
+
+export function GetLlamaServerDownloadProgress():Promise<main.LlamaServerDownloadProgress>;
 
 export function GetLlamaServerInfo():Promise<main.LlamaServerInfo>;
 

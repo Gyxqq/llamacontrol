@@ -5,6 +5,7 @@ import type {
   DownloadRequest,
   HuggingFaceModel,
   LlamaReleaseAsset,
+  LlamaServerDownloadProgress,
   LlamaServerInfo,
   LlamaServerRelease,
   ModelRecord,
@@ -66,6 +67,14 @@ function downloadPercent(model: ModelRecord): number {
   );
 }
 
+function llamaDownloadPercent(progress: LlamaServerDownloadProgress): number {
+  if (!progress.totalBytes || !progress.downloadedBytes) return 0;
+  return Math.max(
+    0,
+    Math.min(100, (progress.downloadedBytes / progress.totalBytes) * 100),
+  );
+}
+
 function statusText(state: ModelRecord["state"]): string {
   switch (state) {
     case "ready":
@@ -114,6 +123,18 @@ function App() {
   const [releaseAssets, setReleaseAssets] = useState<LlamaReleaseAsset[]>([]);
   const [selectedAsset, setSelectedAsset] = useState("");
   const [downloadingLlama, setDownloadingLlama] = useState(false);
+  const [llamaDlProgress, setLlamaDlProgress] = useState<LlamaServerDownloadProgress>({
+    downloading: false,
+    releaseTag: "",
+    assetName: "",
+    totalBytes: 0,
+    downloadedBytes: 0,
+    completed: false,
+    error: "",
+    found: false,
+    version: "",
+    path: "",
+  });
 
   const backendReady = hasBackend();
 
@@ -348,19 +369,39 @@ function App() {
     if (!selectedRelease || !selectedAsset) return;
     setDownloadingLlama(true);
     setError("");
+    setLlamaDlProgress({
+      downloading: true,
+      releaseTag: selectedRelease,
+      assetName: selectedAsset,
+      totalBytes: 0,
+      downloadedBytes: 0,
+      completed: false,
+      error: "",
+      found: false,
+      version: "",
+      path: "",
+    });
     try {
       await backend.DownloadLlamaServerRelease(selectedRelease, selectedAsset);
-      const info = await backend.GetLlamaServerInfo();
-      setLlamaInfo(info);
-      if (info.found) {
-        setSelectedRelease("");
-        setSelectedAsset("");
-        setReleaseAssets([]);
-      }
+      // Method returns immediately — progress polling handles the rest
+    } catch (err) {
+      setDownloadingLlama(false);
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function deleteLlamaServer() {
+    try {
+      setError("");
+      setOperation("正在删除 llama-server");
+      await backend.DeleteLlamaServer();
+      setLlamaInfo({ found: false });
+      const releases = await backend.ListLlamaServerReleases();
+      setLlamaReleases(releases ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setDownloadingLlama(false);
+      setOperation("");
     }
   }
 
@@ -452,6 +493,53 @@ function App() {
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRelease]);
+
+  // Poll llama download progress while downloading
+  useEffect(() => {
+    if (!backendReady || !downloadingLlama) return;
+
+    let active = true;
+
+    async function pollProgress() {
+      try {
+        const progress = await backend.GetLlamaServerDownloadProgress();
+        if (!active) return;
+        setLlamaDlProgress(progress);
+
+        if (!progress.downloading) {
+          // Download finished or failed
+          setDownloadingLlama(false);
+
+          if (progress.completed) {
+            // Success — refresh llama-server info
+            if (!active) return;
+            const info = await backend.GetLlamaServerInfo();
+            if (!active) return;
+            setLlamaInfo(info);
+            if (info.found) {
+              setSelectedRelease("");
+              setSelectedAsset("");
+              setReleaseAssets([]);
+            }
+          } else if (progress.error) {
+            setError(progress.error);
+          }
+        }
+      } catch {
+        // Ignore polling errors
+      }
+    }
+
+    // Poll immediately and then every 500ms
+    pollProgress();
+    const timer = window.setInterval(pollProgress, 500);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendReady, downloadingLlama]);
 
   return (
     <main className="app">
@@ -708,14 +796,46 @@ function App() {
               </span>
             </div>
 
-            {llamaInfo.found ? (
-              <p className="hint">
-                llama-server 已就绪
-                {llamaInfo.version && <> (版本: {llamaInfo.version})</>}
-                {llamaInfo.path && (
-                  <span className="metaPath"> · {llamaInfo.path}</span>
-                )}
-              </p>
+            {downloadingLlama ? (
+              <div className="downloadProgress">
+                <div className="downloadProgressHeader">
+                  <span className="downloadProgressName" title={llamaDlProgress.assetName || selectedAsset}>
+                    {llamaDlProgress.releaseTag || selectedRelease}
+                  </span>
+                  <span className="downloadProgressPct">
+                    {llamaDownloadPercent(llamaDlProgress).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="progress">
+                  <div
+                    style={{ width: `${llamaDownloadPercent(llamaDlProgress)}%` }}
+                  />
+                </div>
+                <div className="downloadProgressMeta">
+                  <span>
+                    {formatBytes(llamaDlProgress.downloadedBytes)} /{" "}
+                    {formatBytes(llamaDlProgress.totalBytes)}
+                  </span>
+                </div>
+              </div>
+            ) : llamaInfo.found ? (
+              <>
+                <p className="hint">
+                  llama-server 已就绪
+                  {llamaInfo.version && <> (版本: {llamaInfo.version})</>}
+                  {llamaInfo.path && (
+                    <span className="metaPath"> · {llamaInfo.path}</span>
+                  )}
+                </p>
+                <div className="modelActions">
+                  <button
+                    className="ghost dangerText"
+                    onClick={() => void deleteLlamaServer()}
+                  >
+                    删除并重新下载
+                  </button>
+                </div>
+              </>
             ) : (
               <>
                 <p className="hint">

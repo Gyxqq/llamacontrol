@@ -48,6 +48,9 @@ type App struct {
 	// GitHub releases cache
 	releasesCache     []LlamaServerRelease
 	releasesCachedAt  time.Time
+
+	// llama.cpp download progress
+	llamaDlProgress LlamaServerDownloadProgress
 }
 
 // downloadTask tracks an in-flight download for cancellation
@@ -131,6 +134,20 @@ type LlamaServerInfo struct {
 	Version string `json:"version"`
 }
 
+// LlamaServerDownloadProgress tracks llama.cpp download progress for the frontend.
+type LlamaServerDownloadProgress struct {
+	Downloading     bool   `json:"downloading"`
+	ReleaseTag      string `json:"releaseTag"`
+	AssetName       string `json:"assetName"`
+	TotalBytes      int64  `json:"totalBytes"`
+	DownloadedBytes int64  `json:"downloadedBytes"`
+	Completed       bool   `json:"completed"`
+	Error           string `json:"error"`
+	Found           bool   `json:"found"`
+	Version         string `json:"version"`
+	Path            string `json:"path"`
+}
+
 // LlamaServerRelease represents a llama.cpp GitHub release for the frontend.
 type LlamaServerRelease struct {
 	TagName     string `json:"tagName"`
@@ -212,9 +229,18 @@ func (a *App) startup(ctx context.Context) {
 // Helpers: metadata persistence
 // ──────────────────────────────────────────────
 
-// appDataDir returns a data directory relative to the current working directory,
-// so the app is portable and can be moved freely.
+// appDataDir returns the directory where the app's data lives.
+// In production it uses the executable's directory; in wails dev mode
+// (binary in a temp directory) it falls back to the working directory.
 func (a *App) appDataDir() (string, error) {
+	execPath, err := os.Executable()
+	if err == nil {
+		execDir := filepath.Dir(execPath)
+		// wails dev places the binary in a temp directory — detect that
+		if !strings.HasPrefix(strings.ToLower(execDir), strings.ToLower(os.TempDir())) {
+			return execDir, nil
+		}
+	}
 	return os.Getwd()
 }
 
@@ -1405,15 +1431,45 @@ func (a *App) ListLlamaReleaseAssets(releaseTag string) ([]LlamaReleaseAsset, er
 
 // DownloadLlamaServerRelease downloads a llama.cpp release, extracts the
 // llama-server binary, and places it in the bin directory.
+// DownloadLlamaServerRelease starts downloading a llama.cpp release in background.
+// The frontend polls GetLlamaServerDownloadProgress for progress updates.
 func (a *App) DownloadLlamaServerRelease(releaseTag string, assetName string) error {
+	if releaseTag == "" || assetName == "" {
+		return fmt.Errorf("版本和加速类型不能为空")
+	}
+
+	a.mu.Lock()
+	if a.llamaDlProgress.Downloading {
+		a.mu.Unlock()
+		return fmt.Errorf("已有下载任务进行中")
+	}
+
+	// Initialize progress
+	a.llamaDlProgress = LlamaServerDownloadProgress{
+		Downloading: true,
+		ReleaseTag:  releaseTag,
+		AssetName:   assetName,
+	}
+	a.mu.Unlock()
+
+	// Launch in background
+	go a.downloadLlamaServerRelease(releaseTag, assetName)
+
+	log.Infof("llama: started background download of release %s, asset %s", releaseTag, assetName)
+	return nil
+}
+
+// downloadLlamaServerRelease performs the actual download, extraction, and installation.
+func (a *App) downloadLlamaServerRelease(releaseTag string, assetName string) {
 	log.Infof("llama: downloading release %s, asset %s", releaseTag, assetName)
 
-	// Fetch the specific release
+	// Fetch the specific release from GitHub API
 	apiURL := fmt.Sprintf("https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/%s", url.PathEscape(releaseTag))
 
 	req, err := http.NewRequestWithContext(a.ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		return fmt.Errorf("创建请求失败: %w", err)
+		a.failLlamaDownload(fmt.Sprintf("创建请求失败: %v", err))
+		return
 	}
 
 	req.Header.Set("User-Agent", "llamacontrol/1.0")
@@ -1421,25 +1477,29 @@ func (a *App) DownloadLlamaServerRelease(releaseTag string, assetName string) er
 
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("请求 GitHub API 失败: %w", err)
+		a.failLlamaDownload(fmt.Sprintf("请求 GitHub API 失败: %v", err))
+		return
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("读取响应失败: %w", err)
+		a.failLlamaDownload(fmt.Sprintf("读取响应失败: %v", err))
+		return
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GitHub API 返回 %d", resp.StatusCode)
+		a.failLlamaDownload(fmt.Sprintf("GitHub API 返回 %d", resp.StatusCode))
+		return
 	}
 
 	var release ghRelease
 	if err := json.Unmarshal(body, &release); err != nil {
-		return fmt.Errorf("解析响应失败: %w", err)
+		a.failLlamaDownload(fmt.Sprintf("解析响应失败: %v", err))
+		return
 	}
 
-	// Find the specific asset by name (user-selected)
+	// Find the specific asset by name
 	var bestAsset *ghReleaseAsset
 	for i, asset := range release.Assets {
 		if asset.Name == assetName {
@@ -1449,15 +1509,26 @@ func (a *App) DownloadLlamaServerRelease(releaseTag string, assetName string) er
 	}
 
 	if bestAsset == nil {
-		return fmt.Errorf("未找到发布文件: %s (适用于 %s)", assetName, runtime.GOOS)
+		a.failLlamaDownload(fmt.Sprintf("未找到发布文件: %s (适用于 %s)", assetName, runtime.GOOS))
+		return
 	}
 
 	log.Infof("llama: downloading asset: %s (%d bytes)", bestAsset.Name, bestAsset.Size)
 
+	// Set total size for progress tracking
+	totalSize := bestAsset.Size
+	if totalSize <= 0 {
+		totalSize = resp.ContentLength
+	}
+	a.mu.Lock()
+	a.llamaDlProgress.TotalBytes = totalSize
+	a.mu.Unlock()
+
 	// Download the archive to a temp file
 	tempDir, err := os.MkdirTemp("", "llamacontrol-llama-*")
 	if err != nil {
-		return fmt.Errorf("创建临时目录失败: %w", err)
+		a.failLlamaDownload(fmt.Sprintf("创建临时目录失败: %v", err))
+		return
 	}
 	defer os.RemoveAll(tempDir)
 
@@ -1465,43 +1536,86 @@ func (a *App) DownloadLlamaServerRelease(releaseTag string, assetName string) er
 
 	dlReq, err := http.NewRequestWithContext(a.ctx, http.MethodGet, bestAsset.DownloadURL, nil)
 	if err != nil {
-		return fmt.Errorf("创建下载请求失败: %w", err)
+		a.failLlamaDownload(fmt.Sprintf("创建下载请求失败: %v", err))
+		return
 	}
 	dlReq.Header.Set("User-Agent", "llamacontrol/1.0")
 	dlReq.Header.Set("Accept", "application/octet-stream")
 
 	dlResp, err := a.httpClient.Do(dlReq)
 	if err != nil {
-		return fmt.Errorf("下载失败: %w", err)
+		a.failLlamaDownload(fmt.Sprintf("下载失败: %v", err))
+		return
 	}
 	defer dlResp.Body.Close()
 
 	if dlResp.StatusCode != http.StatusOK && dlResp.StatusCode != http.StatusFound {
-		return fmt.Errorf("下载返回 %d", dlResp.StatusCode)
+		a.failLlamaDownload(fmt.Sprintf("下载返回 %d", dlResp.StatusCode))
+		return
 	}
 
 	outFile, err := os.Create(archivePath)
 	if err != nil {
-		return fmt.Errorf("创建临时文件失败: %w", err)
+		a.failLlamaDownload(fmt.Sprintf("创建临时文件失败: %v", err))
+		return
 	}
 
-	written, err := io.Copy(outFile, dlResp.Body)
-	outFile.Close()
-	if err != nil {
-		return fmt.Errorf("写入文件失败: %w", err)
+	// Download with progress tracking
+	buf := make([]byte, 32*1024) // 32KB buffer
+	var downloaded int64
+	lastUpdate := time.Now()
+
+	for {
+		n, readErr := dlResp.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := outFile.Write(buf[:n]); writeErr != nil {
+				outFile.Close()
+				os.Remove(archivePath)
+				a.failLlamaDownload(fmt.Sprintf("写入文件失败: %v", writeErr))
+				return
+			}
+			downloaded += int64(n)
+
+			// Update progress at most every 200ms
+			if time.Since(lastUpdate) > 200*time.Millisecond {
+				a.mu.Lock()
+				a.llamaDlProgress.DownloadedBytes = downloaded
+				a.mu.Unlock()
+				lastUpdate = time.Now()
+			}
+		}
+		if readErr != nil {
+			if readErr == io.EOF {
+				break
+			}
+			outFile.Close()
+			os.Remove(archivePath)
+			a.failLlamaDownload(fmt.Sprintf("下载失败: %v", readErr))
+			return
+		}
 	}
-	log.Infof("llama: downloaded %d bytes to %s", written, archivePath)
+
+	outFile.Close()
+
+	// Final progress update
+	a.mu.Lock()
+	a.llamaDlProgress.DownloadedBytes = downloaded
+	a.mu.Unlock()
+
+	log.Infof("llama: downloaded %d bytes to %s", downloaded, archivePath)
 
 	// Extract the archive
 	extractDir := filepath.Join(tempDir, "extracted")
 	if err := os.MkdirAll(extractDir, 0755); err != nil {
-		return fmt.Errorf("创建解压目录失败: %w", err)
+		a.failLlamaDownload(fmt.Sprintf("创建解压目录失败: %v", err))
+		return
 	}
 
 	log.Debugf("llama: extracting %s to %s", archivePath, extractDir)
 
 	if err := extractArchive(archivePath, extractDir); err != nil {
-		return fmt.Errorf("解压失败: %w", err)
+		a.failLlamaDownload(fmt.Sprintf("解压失败: %v", err))
+		return
 	}
 
 	// Find llama-server binary in extracted files
@@ -1537,7 +1651,8 @@ func (a *App) DownloadLlamaServerRelease(releaseTag string, assetName string) er
 	}
 
 	if serverPath == "" {
-		return fmt.Errorf("解压后未找到 llama-server 可执行文件")
+		a.failLlamaDownload("解压后未找到 llama-server 可执行文件")
+		return
 	}
 
 	// Copy to binDir
@@ -1546,18 +1661,21 @@ func (a *App) DownloadLlamaServerRelease(releaseTag string, assetName string) er
 
 	srcFile, err := os.Open(serverPath)
 	if err != nil {
-		return fmt.Errorf("打开源文件失败: %w", err)
+		a.failLlamaDownload(fmt.Sprintf("打开源文件失败: %v", err))
+		return
 	}
 	defer srcFile.Close()
 
 	destFile, err := os.Create(destPath)
 	if err != nil {
-		return fmt.Errorf("创建目标文件失败: %w", err)
+		a.failLlamaDownload(fmt.Sprintf("创建目标文件失败: %v", err))
+		return
 	}
 	defer destFile.Close()
 
 	if _, err := io.Copy(destFile, srcFile); err != nil {
-		return fmt.Errorf("复制文件失败: %w", err)
+		a.failLlamaDownload(fmt.Sprintf("复制文件失败: %v", err))
+		return
 	}
 
 	// Make executable on Unix
@@ -1573,7 +1691,79 @@ func (a *App) DownloadLlamaServerRelease(releaseTag string, assetName string) er
 	// Clear the releases cache so next listing reflects installed state
 	a.releasesCache = nil
 
+	// Mark as completed
+	installedPath, _ := a.locateLlamaServer()
+	a.mu.Lock()
+	a.llamaDlProgress.Downloading = false
+	a.llamaDlProgress.Completed = true
+	a.llamaDlProgress.Error = ""
+	a.llamaDlProgress.Found = true
+	a.llamaDlProgress.Version = a.readInstalledVersion()
+	a.llamaDlProgress.Path = installedPath
+	a.mu.Unlock()
+
 	log.Infof("llama: successfully installed %s", releaseTag)
+}
+
+// failLlamaDownload marks the llama download as failed and cleans up progress state.
+func (a *App) failLlamaDownload(errMsg string) {
+	log.Errorf("llama: download failed: %s", errMsg)
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.llamaDlProgress.Downloading = false
+	a.llamaDlProgress.Completed = false
+	a.llamaDlProgress.Error = errMsg
+}
+
+// GetLlamaServerDownloadProgress returns the current llama.cpp download progress.
+func (a *App) GetLlamaServerDownloadProgress() LlamaServerDownloadProgress {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	// Return a copy
+	progress := a.llamaDlProgress
+
+	// Also fill in the current installed state if applicable
+	if !progress.Downloading && !progress.Completed && progress.Error == "" {
+		// No download in progress and no completed/failed state — check installed
+		path, err := a.locateLlamaServer()
+		if err == nil {
+			progress.Found = true
+			progress.Version = a.readInstalledVersion()
+			progress.Path = path
+		}
+	}
+
+	return progress
+}
+
+// DeleteLlamaServer removes the installed llama-server binary and version file.
+func (a *App) DeleteLlamaServer() error {
+	// Delete the binary
+	for _, name := range []string{"llama-server", "llama-server.exe"} {
+		binPath := filepath.Join(a.binDir, name)
+		if err := os.Remove(binPath); err != nil && !os.IsNotExist(err) {
+			log.Warnf("delete llama-server: failed to remove %s: %v", binPath, err)
+		}
+	}
+
+	// Delete version file
+	versionPath := filepath.Join(a.binDir, "version.txt")
+	if err := os.Remove(versionPath); err != nil && !os.IsNotExist(err) {
+		log.Warnf("delete llama-server: failed to remove version file: %v", err)
+	}
+
+	// Clear the releases cache so listing re-fetches
+	a.releasesCache = nil
+
+	// Reset progress state
+	a.mu.Lock()
+	a.llamaDlProgress = LlamaServerDownloadProgress{}
+	a.mu.Unlock()
+
+	log.Infof("delete llama-server: removed installed binary")
 	return nil
 }
 

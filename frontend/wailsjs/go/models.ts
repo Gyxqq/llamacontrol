@@ -52,6 +52,36 @@ export namespace main {
 	        this.downloadUrl = source["downloadUrl"];
 	    }
 	}
+	export class LlamaServerDownloadProgress {
+	    downloading: boolean;
+	    releaseTag: string;
+	    assetName: string;
+	    totalBytes: number;
+	    downloadedBytes: number;
+	    completed: boolean;
+	    error: string;
+	    found: boolean;
+	    version: string;
+	    path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LlamaServerDownloadProgress(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.downloading = source["downloading"];
+	        this.releaseTag = source["releaseTag"];
+	        this.assetName = source["assetName"];
+	        this.totalBytes = source["totalBytes"];
+	        this.downloadedBytes = source["downloadedBytes"];
+	        this.completed = source["completed"];
+	        this.error = source["error"];
+	        this.found = source["found"];
+	        this.version = source["version"];
+	        this.path = source["path"];
+	    }
+	}
 	export class LlamaServerInfo {
 	    found: boolean;
 	    path: string;

@@ -2,6 +2,7 @@ import type {
   DownloadRequest,
   HuggingFaceModel,
   LlamaReleaseAsset,
+  LlamaServerDownloadProgress,
   LlamaServerInfo,
   LlamaServerRelease,
   ModelRecord,
@@ -100,5 +101,13 @@ export const backend = {
 
   DownloadLlamaServerRelease(releaseTag: string, assetName: string): Promise<void> {
     return call<void>("DownloadLlamaServerRelease", releaseTag, assetName);
+  },
+
+  GetLlamaServerDownloadProgress(): Promise<LlamaServerDownloadProgress> {
+    return call<LlamaServerDownloadProgress>("GetLlamaServerDownloadProgress");
+  },
+
+  DeleteLlamaServer(): Promise<void> {
+    return call<void>("DeleteLlamaServer");
   },
 };

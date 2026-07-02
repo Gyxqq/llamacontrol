@@ -6,12 +6,20 @@ export function CancelModelDownload(arg1) {
   return window['go']['main']['App']['CancelModelDownload'](arg1);
 }
 
+export function DeleteLlamaServer() {
+  return window['go']['main']['App']['DeleteLlamaServer']();
+}
+
 export function DeleteModel(arg1) {
   return window['go']['main']['App']['DeleteModel'](arg1);
 }
 
 export function DownloadLlamaServerRelease(arg1, arg2) {
   return window['go']['main']['App']['DownloadLlamaServerRelease'](arg1, arg2);
+}
+
+export function GetLlamaServerDownloadProgress() {
+  return window['go']['main']['App']['GetLlamaServerDownloadProgress']();
 }
 
 export function GetLlamaServerInfo() {
