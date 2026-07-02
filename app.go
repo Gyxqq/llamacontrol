@@ -158,35 +158,14 @@ func (a *App) startup(ctx context.Context) {
 // Helpers: metadata persistence
 // ──────────────────────────────────────────────
 
-// appDataDir returns the platform-specific application data directory.
+// appDataDir returns the directory of the executable, so all data
+// (models, metadata) is stored relative to the running binary.
 func (a *App) appDataDir() (string, error) {
-	var base string
-
-	switch runtime.GOOS {
-	case "windows":
-		base = os.Getenv("APPDATA")
-		if base == "" {
-			home, _ := os.UserHomeDir()
-			base = filepath.Join(home, "AppData", "Roaming")
-		}
-	case "darwin":
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		base = filepath.Join(home, "Library", "Application Support")
-	default: // linux, bsd, etc.
-		base = os.Getenv("XDG_DATA_HOME")
-		if base == "" {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return "", err
-			}
-			base = filepath.Join(home, ".local", "share")
-		}
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve executable path: %w", err)
 	}
-
-	return filepath.Join(base, "llamacontrol"), nil
+	return filepath.Dir(exe), nil
 }
 
 // loadMetadata reads metadata.json from disk into a.models.
@@ -1074,11 +1053,13 @@ type hfModelRaw struct {
 	LibraryName string `json:"library_name"`
 }
 
-// SearchHuggingFaceModels searches Hugging Face for GGUF model repos
+// SearchHuggingFaceModels searches Hugging Face for GGUF model repos.
+// The HF API search parameter does server-side full-text matching; we
+// embed "gguf" in the query so only GGUF-related models are returned.
 func (a *App) SearchHuggingFaceModels(query string) ([]HuggingFaceModel, error) {
 	log.Debugf("hf: searching models with query=%q", query)
 	params := url.Values{}
-	params.Set("search", query)
+	params.Set("search", query+" gguf")
 	params.Set("sort", "downloads")
 	params.Set("direction", "-1")
 	params.Set("limit", "30")
@@ -1112,7 +1093,7 @@ func (a *App) SearchHuggingFaceModels(query string) ([]HuggingFaceModel, error) 
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	// Filter to models that look like GGUF repos and deduplicate
+	// Deduplicate by model ID
 	seen := make(map[string]bool)
 	models := make([]HuggingFaceModel, 0, len(raw))
 
@@ -1121,17 +1102,6 @@ func (a *App) SearchHuggingFaceModels(query string) ([]HuggingFaceModel, error) 
 			continue
 		}
 		seen[m.ID] = true
-
-		// Only include models with GGUF in the ID or description
-		idLower := strings.ToLower(m.ID)
-		descLower := strings.ToLower(m.Description)
-
-		if !strings.Contains(idLower, "gguf") && !strings.Contains(descLower, "gguf") {
-			// Still include if pipeline_tag is text-generation
-			if m.PipelineTag != "text-generation" {
-				continue
-			}
-		}
 
 		models = append(models, HuggingFaceModel{
 			ID:          m.ID,

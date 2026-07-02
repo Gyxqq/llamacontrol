@@ -128,6 +128,10 @@ function App() {
     return models.filter((model) => model.state === "ready");
   }, [models]);
 
+  const downloadingModels = useMemo(() => {
+    return models.filter((model) => model.state === "downloading");
+  }, [models]);
+
   async function refresh() {
     if (!backendReady) return;
 
@@ -584,6 +588,36 @@ function App() {
           >
             开始下载
           </button>
+
+          {downloadingModels.map((model) => (
+            <div key={model.id} className="downloadProgress">
+              <div className="downloadProgressHeader">
+                <span className="downloadProgressName" title={model.displayName}>
+                  {model.displayName}
+                </span>
+                <span className="downloadProgressPct">
+                  {downloadPercent(model).toFixed(1)}%
+                </span>
+              </div>
+              <div className="progress">
+                <div
+                  style={{ width: `${downloadPercent(model)}%` }}
+                />
+              </div>
+              <div className="downloadProgressMeta">
+                <span>
+                  {formatBytes(model.downloadedBytes)} /{" "}
+                  {formatBytes(model.sizeBytes)}
+                </span>
+                <button
+                  className="ghost dangerText"
+                  onClick={() => void cancelDownload(model.id)}
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          ))}
         </section>
 
         <section className="panel modelPanel">

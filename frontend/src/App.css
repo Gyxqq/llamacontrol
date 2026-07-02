@@ -752,6 +752,58 @@ input::placeholder {
   height: clamp(18px, 3vh, 24px);
 }
 
+/* ── Download Progress ── */
+
+.downloadProgress {
+  margin-top: var(--field-margin);
+  padding: clamp(6px, 1.2vh, 10px) clamp(7px, 1.3vw, 12px);
+  border-radius: var(--radius);
+  background: rgba(9, 9, 11, 0.5);
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(3px, 0.6vh, 6px);
+  flex-shrink: 0;
+}
+
+.downloadProgressHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.downloadProgressName {
+  color: #e4e4e7;
+  font-size: var(--text-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.downloadProgressPct {
+  color: #93c5fd;
+  font-size: var(--text-small);
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.downloadProgressMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  color: #a1a1aa;
+  font-size: clamp(9px, 1.4vh, 11px);
+}
+
+.downloadProgressMeta button {
+  font-size: clamp(9px, 1.4vh, 11px);
+  padding: 0 clamp(5px, 0.8vw, 8px);
+  min-height: 0;
+  height: clamp(18px, 3vh, 24px);
+}
+
 @media (max-height: 700px) {
   :root {
     --page-pad-y: 6px;
