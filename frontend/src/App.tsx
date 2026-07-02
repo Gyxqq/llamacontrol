@@ -93,11 +93,25 @@ function App() {
   const [serverStatus, setServerStatus] =
     useState<ServerStatus>(emptyStatus);
 
+  const [maximized, setMaximized] = useState(false);
   const [loading, setLoading] = useState(false);
   const [operation, setOperation] = useState("");
   const [error, setError] = useState("");
 
   const backendReady = hasBackend();
+
+  function minimise() {
+    window.runtime?.WindowMinimise();
+  }
+
+  function toggleMaximise() {
+    window.runtime?.WindowToggleMaximise();
+    setMaximized((prev) => !prev);
+  }
+
+  function closeWin() {
+    window.runtime?.Quit();
+  }
 
   const selectedModel = useMemo(() => {
     return models.find((model) => model.id === selectedModelId);
@@ -291,6 +305,46 @@ function App() {
 
   return (
     <main className="app">
+      <div className="titlebar">
+        <span className="titlebarTitle">llamacontrol</span>
+        <div className="titlebarControls">
+          <button
+            className="winBtn minimizeBtn"
+            onClick={minimise}
+            title="最小化"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12">
+              <rect x="1" y="5.5" width="10" height="1" fill="currentColor" />
+            </svg>
+          </button>
+          <button
+            className="winBtn maximizeBtn"
+            onClick={toggleMaximise}
+            title="最大化"
+          >
+            {maximized ? (
+              <svg width="12" height="12" viewBox="0 0 12 12">
+                <rect x="3" y="0.5" width="8" height="8" rx="1" fill="none" stroke="currentColor" strokeWidth="1" />
+                <rect x="0.5" y="3" width="8" height="8" rx="1" fill="currentColor" />
+              </svg>
+            ) : (
+              <svg width="12" height="12" viewBox="0 0 12 12">
+                <rect x="1.5" y="1.5" width="9" height="9" rx="1" fill="none" stroke="currentColor" strokeWidth="1" />
+              </svg>
+            )}
+          </button>
+          <button
+            className="winBtn closeBtn"
+            onClick={closeWin}
+            title="关闭"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12">
+              <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.2" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
       <header className="topbar">
         <div>
           <h1>llama control</h1>

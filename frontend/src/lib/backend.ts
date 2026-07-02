@@ -13,6 +13,14 @@ declare global {
         App?: Record<string, (...args: unknown[]) => Promise<unknown>>;
       };
     };
+    runtime?: {
+      WindowMinimise: () => void;
+      WindowMaximise: () => void;
+      WindowUnmaximise: () => void;
+      WindowToggleMaximise: () => void;
+      WindowIsMaximised: () => Promise<boolean>;
+      Quit: () => void;
+    };
   }
 }
 
