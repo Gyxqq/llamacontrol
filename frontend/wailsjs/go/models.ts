@@ -36,6 +36,38 @@ export namespace main {
 	        this.description = source["description"];
 	    }
 	}
+	export class LlamaServerInfo {
+	    found: boolean;
+	    path: string;
+	    version: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LlamaServerInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.found = source["found"];
+	        this.path = source["path"];
+	        this.version = source["version"];
+	    }
+	}
+	export class LlamaServerRelease {
+	    tagName: string;
+	    name: string;
+	    publishedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LlamaServerRelease(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tagName = source["tagName"];
+	        this.name = source["name"];
+	        this.publishedAt = source["publishedAt"];
+	    }
+	}
 	export class ModelRecord {
 	    id: string;
 	    displayName: string;

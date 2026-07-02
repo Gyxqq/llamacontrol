@@ -65,3 +65,15 @@ export interface HuggingFaceModel {
   downloads?: number;
   description?: string;
 }
+
+export interface LlamaServerInfo {
+  found: boolean;
+  path?: string;
+  version?: string;
+}
+
+export interface LlamaServerRelease {
+  tagName: string;
+  name: string;
+  publishedAt: string;
+}

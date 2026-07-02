@@ -18,6 +18,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"archive/zip"
+
+	"github.com/bodgit/sevenzip"
 )
 
 // ──────────────────────────────────────────────
@@ -28,6 +32,7 @@ type App struct {
 	ctx          context.Context
 	httpClient   *http.Client
 	modelsDir    string
+	binDir       string
 	metadataPath string
 	mu           sync.RWMutex
 
@@ -39,6 +44,10 @@ type App struct {
 
 	// llama-server process state (in-memory only)
 	serverState *serverState
+
+	// GitHub releases cache
+	releasesCache     []LlamaServerRelease
+	releasesCachedAt  time.Time
 }
 
 // downloadTask tracks an in-flight download for cancellation
@@ -111,6 +120,39 @@ type ServerStatus struct {
 	LogTail     []string `json:"logTail"`
 }
 
+// ──────────────────────────────────────────────
+// llama.cpp release management types
+// ──────────────────────────────────────────────
+
+// LlamaServerInfo reports whether llama-server is available.
+type LlamaServerInfo struct {
+	Found   bool   `json:"found"`
+	Path    string `json:"path"`
+	Version string `json:"version"`
+}
+
+// LlamaServerRelease represents a llama.cpp GitHub release for the frontend.
+type LlamaServerRelease struct {
+	TagName     string `json:"tagName"`
+	Name        string `json:"name"`
+	PublishedAt string `json:"publishedAt"`
+}
+
+// ghReleaseAsset is a single asset in a GitHub release.
+type ghReleaseAsset struct {
+	Name        string `json:"name"`
+	Size        int64  `json:"size"`
+	DownloadURL string `json:"download_url"`
+}
+
+// ghRelease is the raw GitHub API response shape.
+type ghRelease struct {
+	TagName     string           `json:"tag_name"`
+	Name        string           `json:"name"`
+	PublishedAt string           `json:"published_at"`
+	Assets      []ghReleaseAsset `json:"assets"`
+}
+
 // NewApp creates a new App application struct
 func NewApp() *App {
 	log.Debug("app: instance created")
@@ -137,11 +179,16 @@ func (a *App) startup(ctx context.Context) {
 	log.Infof("startup: app data directory: %s", appDataDir)
 
 	a.modelsDir = filepath.Join(appDataDir, "models")
+	a.binDir = filepath.Join(appDataDir, "bin")
 	a.metadataPath = filepath.Join(appDataDir, "metadata.json")
 
-	// Ensure models directory exists
+	// Ensure directories exist
 	if err := os.MkdirAll(a.modelsDir, 0755); err != nil {
 		log.Errorf("startup: failed to create models dir: %v", err)
+		return
+	}
+	if err := os.MkdirAll(a.binDir, 0755); err != nil {
+		log.Errorf("startup: failed to create bin dir: %v", err)
 		return
 	}
 
@@ -760,6 +807,53 @@ func findLlamaServer() (string, error) {
 	return path, nil
 }
 
+// locateLlamaServer checks binDir first, then falls back to PATH / env var.
+func (a *App) locateLlamaServer() (string, error) {
+	// 1. Check binDir first (auto-downloaded binary)
+	for _, name := range []string{"llama-server", "llama-server.exe"} {
+		binPath := filepath.Join(a.binDir, name)
+		if info, err := os.Stat(binPath); err == nil && !info.IsDir() {
+			log.Debugf("server: found in binary directory: %s", binPath)
+			return binPath, nil
+		}
+	}
+
+	// 2. Fall back to PATH / env var
+	return findLlamaServer()
+}
+
+// readInstalledVersion reads the version file from binDir.
+func (a *App) readInstalledVersion() string {
+	versionPath := filepath.Join(a.binDir, "version.txt")
+	data, err := os.ReadFile(versionPath)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// writeInstalledVersion writes the version file to binDir.
+func (a *App) writeInstalledVersion(version string) error {
+	versionPath := filepath.Join(a.binDir, "version.txt")
+	return os.WriteFile(versionPath, []byte(version), 0644)
+}
+
+// GetLlamaServerInfo returns whether llama-server is available.
+func (a *App) GetLlamaServerInfo() LlamaServerInfo {
+	path, err := a.locateLlamaServer()
+	if err != nil {
+		return LlamaServerInfo{
+			Found:   false,
+			Version: a.readInstalledVersion(),
+		}
+	}
+	return LlamaServerInfo{
+		Found:   true,
+		Path:    path,
+		Version: a.readInstalledVersion(),
+	}
+}
+
 // validateServerConfig checks that the server config is reasonable.
 func validateServerConfig(config ServerConfig) error {
 	if config.Host == "" {
@@ -854,7 +948,7 @@ func (a *App) StartLlamaServer(config ServerConfig) error {
 	}
 
 	// Find the llama-server binary
-	serverPath, err := findLlamaServer()
+		serverPath, err := a.locateLlamaServer()
 	if err != nil {
 		return err
 	}
@@ -1160,6 +1254,367 @@ func (a *App) ListModelGguFiles(repoId string) ([]string, error) {
 	}
 
 	return files, nil
+}
+
+// ──────────────────────────────────────────────
+// llama.cpp release management
+// ──────────────────────────────────────────────
+
+// platformAssetMatch returns true if the asset name matches the current OS.
+func platformAssetMatch(name string) bool {
+	name = strings.ToLower(name)
+	switch runtime.GOOS {
+	case "windows":
+		return strings.Contains(name, "win") &&
+			(strings.HasSuffix(name, ".7z") || strings.HasSuffix(name, ".zip"))
+	case "darwin":
+		return (strings.Contains(name, "macos") || strings.Contains(name, "apple")) &&
+			(strings.HasSuffix(name, ".7z") || strings.HasSuffix(name, ".zip"))
+	default: // linux
+		return (strings.Contains(name, "ubuntu") || strings.Contains(name, "linux")) &&
+			(strings.HasSuffix(name, ".7z") || strings.HasSuffix(name, ".zip"))
+	}
+}
+
+// ListLlamaServerReleases fetches available llama.cpp releases from GitHub.
+// Results are filtered to only include releases with assets for the current platform.
+// Results are cached in memory for 5 minutes.
+func (a *App) ListLlamaServerReleases() ([]LlamaServerRelease, error) {
+	log.Debug("llama: listing releases from GitHub")
+
+	// Check cache (5 min TTL)
+	if a.releasesCache != nil && time.Since(a.releasesCachedAt) < 5*time.Minute {
+		log.Debug("llama: returning cached releases")
+		return a.releasesCache, nil
+	}
+
+	apiURL := "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=20"
+
+	req, err := http.NewRequestWithContext(a.ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "llamacontrol/1.0")
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("请求 GitHub API 失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub API 返回 %d", resp.StatusCode)
+	}
+
+	var raw []ghRelease
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	var releases []LlamaServerRelease
+	for _, r := range raw {
+		// Skip if no platform-matching asset
+		hasMatch := false
+		for _, asset := range r.Assets {
+			if platformAssetMatch(asset.Name) {
+				hasMatch = true
+				break
+			}
+		}
+		if !hasMatch {
+			continue
+		}
+
+		releases = append(releases, LlamaServerRelease{
+			TagName:     r.TagName,
+			Name:        strings.TrimSpace(r.Name),
+			PublishedAt: r.PublishedAt,
+		})
+	}
+
+	// Update cache
+	a.releasesCache = releases
+	a.releasesCachedAt = time.Now()
+
+	log.Infof("llama: found %d compatible release(s)", len(releases))
+	return releases, nil
+}
+
+// DownloadLlamaServerRelease downloads a llama.cpp release, extracts the
+// llama-server binary, and places it in the bin directory.
+func (a *App) DownloadLlamaServerRelease(releaseTag string) error {
+	log.Infof("llama: downloading release %s", releaseTag)
+
+	// Fetch the specific release
+	apiURL := fmt.Sprintf("https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/%s", url.PathEscape(releaseTag))
+
+	req, err := http.NewRequestWithContext(a.ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return fmt.Errorf("创建请求失败: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "llamacontrol/1.0")
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("请求 GitHub API 失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GitHub API 返回 %d", resp.StatusCode)
+	}
+
+	var release ghRelease
+	if err := json.Unmarshal(body, &release); err != nil {
+		return fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	// Find the best matching asset for this platform
+	var bestAsset *ghReleaseAsset
+	for i, asset := range release.Assets {
+		if platformAssetMatch(asset.Name) {
+			bestAsset = &release.Assets[i]
+			// Prefer GPU variants (cuda, vulkan) over CPU-only
+			if strings.Contains(strings.ToLower(asset.Name), "cuda") ||
+				strings.Contains(strings.ToLower(asset.Name), "vulkan") {
+				break
+			}
+		}
+	}
+
+	if bestAsset == nil {
+		return fmt.Errorf("未找到适用于当前平台的发布文件 (%s)", runtime.GOOS)
+	}
+
+	log.Infof("llama: downloading asset: %s (%d bytes)", bestAsset.Name, bestAsset.Size)
+
+	// Download the archive to a temp file
+	tempDir, err := os.MkdirTemp("", "llamacontrol-llama-*")
+	if err != nil {
+		return fmt.Errorf("创建临时目录失败: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	archivePath := filepath.Join(tempDir, bestAsset.Name)
+
+	dlReq, err := http.NewRequestWithContext(a.ctx, http.MethodGet, bestAsset.DownloadURL, nil)
+	if err != nil {
+		return fmt.Errorf("创建下载请求失败: %w", err)
+	}
+	dlReq.Header.Set("User-Agent", "llamacontrol/1.0")
+	dlReq.Header.Set("Accept", "application/octet-stream")
+
+	dlResp, err := a.httpClient.Do(dlReq)
+	if err != nil {
+		return fmt.Errorf("下载失败: %w", err)
+	}
+	defer dlResp.Body.Close()
+
+	if dlResp.StatusCode != http.StatusOK && dlResp.StatusCode != http.StatusFound {
+		return fmt.Errorf("下载返回 %d", dlResp.StatusCode)
+	}
+
+	outFile, err := os.Create(archivePath)
+	if err != nil {
+		return fmt.Errorf("创建临时文件失败: %w", err)
+	}
+
+	written, err := io.Copy(outFile, dlResp.Body)
+	outFile.Close()
+	if err != nil {
+		return fmt.Errorf("写入文件失败: %w", err)
+	}
+	log.Infof("llama: downloaded %d bytes to %s", written, archivePath)
+
+	// Extract the archive
+	extractDir := filepath.Join(tempDir, "extracted")
+	if err := os.MkdirAll(extractDir, 0755); err != nil {
+		return fmt.Errorf("创建解压目录失败: %w", err)
+	}
+
+	log.Debugf("llama: extracting %s to %s", archivePath, extractDir)
+
+	if err := extractArchive(archivePath, extractDir); err != nil {
+		return fmt.Errorf("解压失败: %w", err)
+	}
+
+	// Find llama-server binary in extracted files
+	serverName := "llama-server"
+	if runtime.GOOS == "windows" {
+		serverName = "llama-server.exe"
+	}
+
+	var serverPath string
+	filepath.Walk(extractDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !info.IsDir() && strings.EqualFold(filepath.Base(path), serverName) {
+			serverPath = path
+			return filepath.SkipAll
+		}
+		return nil
+	})
+
+	if serverPath == "" {
+		// Fallback: search for any executable with "server" in name
+		filepath.Walk(extractDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			if !info.IsDir() && strings.Contains(strings.ToLower(filepath.Base(path)), "server") {
+				serverPath = path
+				return filepath.SkipAll
+			}
+			return nil
+		})
+	}
+
+	if serverPath == "" {
+		return fmt.Errorf("解压后未找到 llama-server 可执行文件")
+	}
+
+	// Copy to binDir
+	destPath := filepath.Join(a.binDir, serverName)
+	log.Infof("llama: installing %s -> %s", serverPath, destPath)
+
+	srcFile, err := os.Open(serverPath)
+	if err != nil {
+		return fmt.Errorf("打开源文件失败: %w", err)
+	}
+	defer srcFile.Close()
+
+	destFile, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("创建目标文件失败: %w", err)
+	}
+	defer destFile.Close()
+
+	if _, err := io.Copy(destFile, srcFile); err != nil {
+		return fmt.Errorf("复制文件失败: %w", err)
+	}
+
+	// Make executable on Unix
+	if runtime.GOOS != "windows" {
+		os.Chmod(destPath, 0755)
+	}
+
+	// Save version
+	if err := a.writeInstalledVersion(releaseTag); err != nil {
+		log.Warnf("llama: failed to write version file: %v", err)
+	}
+
+	// Clear the releases cache so next listing reflects installed state
+	a.releasesCache = nil
+
+	log.Infof("llama: successfully installed %s", releaseTag)
+	return nil
+}
+
+// extractArchive extracts a .7z or .zip archive to the destination directory.
+func extractArchive(archivePath, destDir string) error {
+	ext := strings.ToLower(filepath.Ext(archivePath))
+	switch ext {
+	case ".7z":
+		r, err := sevenzip.OpenReader(archivePath)
+		if err != nil {
+			return fmt.Errorf("打开 7z 文件失败: %w", err)
+		}
+		defer r.Close()
+
+		for _, f := range r.File {
+			fpath := filepath.Join(destDir, f.Name)
+
+			if f.FileInfo().IsDir() {
+				if err := os.MkdirAll(fpath, 0755); err != nil {
+					return err
+				}
+				continue
+			}
+
+			// Create parent directories
+			if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
+				return err
+			}
+
+			rc, err := f.Open()
+			if err != nil {
+				return fmt.Errorf("打开 7z 内文件 %s 失败: %w", f.Name, err)
+			}
+
+			outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+			if err != nil {
+				rc.Close()
+				return fmt.Errorf("创建文件 %s 失败: %w", fpath, err)
+			}
+
+			_, err = io.Copy(outFile, rc)
+			rc.Close()
+			outFile.Close()
+			if err != nil {
+				return fmt.Errorf("写入文件 %s 失败: %w", fpath, err)
+			}
+		}
+		return nil
+
+	case ".zip":
+		r, err := zip.OpenReader(archivePath)
+		if err != nil {
+			return fmt.Errorf("打开 zip 文件失败: %w", err)
+		}
+		defer r.Close()
+
+		for _, f := range r.File {
+			fpath := filepath.Join(destDir, f.Name)
+
+			if f.FileInfo().IsDir() {
+				if err := os.MkdirAll(fpath, 0755); err != nil {
+					return err
+				}
+				continue
+			}
+
+			if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
+				return err
+			}
+
+			rc, err := f.Open()
+			if err != nil {
+				return fmt.Errorf("打开 zip 内文件 %s 失败: %w", f.Name, err)
+			}
+
+			outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+			if err != nil {
+				rc.Close()
+				return fmt.Errorf("创建文件 %s 失败: %w", fpath, err)
+			}
+
+			_, err = io.Copy(outFile, rc)
+			rc.Close()
+			outFile.Close()
+			if err != nil {
+				return fmt.Errorf("写入文件 %s 失败: %w", fpath, err)
+			}
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("不支持的压缩格式: %s (仅支持 .7z 和 .zip)", ext)
+	}
 }
 
 func truncateString(s string, maxLen int) string {

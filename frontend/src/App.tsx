@@ -4,6 +4,8 @@ import "./App.css";
 import type {
   DownloadRequest,
   HuggingFaceModel,
+  LlamaServerInfo,
+  LlamaServerRelease,
   ModelRecord,
   ServerConfig,
   ServerStatus,
@@ -104,6 +106,11 @@ function App() {
   const [searching, setSearching] = useState(false);
   const [ggufFiles, setGgufFiles] = useState<string[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
+
+  const [llamaInfo, setLlamaInfo] = useState<LlamaServerInfo>({ found: false });
+  const [llamaReleases, setLlamaReleases] = useState<LlamaServerRelease[]>([]);
+  const [selectedRelease, setSelectedRelease] = useState("");
+  const [downloadingLlama, setDownloadingLlama] = useState(false);
 
   const backendReady = hasBackend();
 
@@ -334,6 +341,24 @@ function App() {
     }
   }
 
+  async function handleDownloadLlama() {
+    if (!selectedRelease) return;
+    setDownloadingLlama(true);
+    setError("");
+    try {
+      await backend.DownloadLlamaServerRelease(selectedRelease);
+      const info = await backend.GetLlamaServerInfo();
+      setLlamaInfo(info);
+      if (info.found) {
+        setSelectedRelease("");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDownloadingLlama(false);
+    }
+  }
+
   // Auto-fetch GGUF files when a repo is selected
   useEffect(() => {
     if (!downloadForm.repoId) {
@@ -371,6 +396,27 @@ function App() {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [downloadForm.repoId]);
+
+  // Detect llama-server on startup; if not found, list available releases
+  useEffect(() => {
+    if (!backendReady) return;
+
+    async function checkLlamaServer() {
+      try {
+        const info = await backend.GetLlamaServerInfo();
+        setLlamaInfo(info);
+        if (!info.found) {
+          const releases = await backend.ListLlamaServerReleases();
+          setLlamaReleases(releases ?? []);
+        }
+      } catch {
+        // Silently ignore — llama.cpp detection is non-critical
+      }
+    }
+
+    checkLlamaServer();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendReady]);
 
   return (
     <main className="app">
@@ -618,6 +664,60 @@ function App() {
               </div>
             </div>
           ))}
+
+          <div className="llamaSection">
+            <div className="panelHeader">
+              <h2>llama.cpp</h2>
+              <span className={`badge ${llamaInfo.found ? "ready" : "missing"}`}>
+                {llamaInfo.found ? "已安装" : "未安装"}
+              </span>
+            </div>
+
+            {llamaInfo.found ? (
+              <p className="hint">
+                llama-server 已就绪
+                {llamaInfo.version && <> (版本: {llamaInfo.version})</>}
+                {llamaInfo.path && (
+                  <span className="metaPath"> · {llamaInfo.path}</span>
+                )}
+              </p>
+            ) : (
+              <>
+                <p className="hint">
+                  未检测到 llama-server，请选择版本下载安装
+                </p>
+                <label className="field">
+                  <span>选择版本</span>
+                  <select
+                    value={selectedRelease}
+                    onChange={(event) =>
+                      setSelectedRelease(event.target.value)
+                    }
+                    disabled={downloadingLlama}
+                  >
+                    <option value="">
+                      {llamaReleases.length > 0
+                        ? "请选择版本"
+                        : "加载中..."}
+                    </option>
+                    {llamaReleases.map((r) => (
+                      <option key={r.tagName} value={r.tagName}>
+                        {r.tagName}
+                        {r.name ? ` — ${r.name}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  className="primary full"
+                  onClick={() => void handleDownloadLlama()}
+                  disabled={!selectedRelease || downloadingLlama}
+                >
+                  {downloadingLlama ? "下载中..." : "下载并安装"}
+                </button>
+              </>
+            )}
+          </div>
         </section>
 
         <section className="panel modelPanel">

@@ -881,3 +881,31 @@ input::placeholder {
     line-height: 1.2;
   }
 }
+
+/* ── llama.cpp Management ── */
+
+.llamaSection {
+  margin-top: clamp(8px, 1.6vh, 14px);
+  padding-top: clamp(6px, 1.2vh, 10px);
+  border-top: 1px solid rgba(63, 63, 70, 0.6);
+  flex-shrink: 0;
+}
+
+.llamaSection .panelHeader {
+  margin-bottom: clamp(4px, 0.8vh, 8px);
+}
+
+.llamaSection .panelHeader h2 {
+  font-size: var(--title);
+}
+
+.llamaSection .hint {
+  margin: 0 0 var(--field-margin);
+  color: #a1a1aa;
+  font-size: var(--text-small);
+}
+
+.llamaSection .metaPath {
+  color: #71717a;
+  font-size: clamp(9px, 1.4vh, 11px);
+}
