@@ -593,7 +593,10 @@ input::placeholder {
   flex: 1;
   margin: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  word-break: break-all;
   border-radius: var(--radius);
   background: #050505;
   border: 1px solid rgba(63, 63, 70, 0.78);
