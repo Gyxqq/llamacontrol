@@ -1,6 +1,19 @@
 :root {
   color: #e5e7eb;
   background: #09090b;
+  --page-pad-y: clamp(8px, 1.8vh, 20px);
+  --page-pad-x: clamp(10px, 2vw, 24px);
+  --panel-pad-y: clamp(8px, 1.45vh, 14px);
+  --panel-pad-x: clamp(9px, 1.35vw, 16px);
+  --gap: clamp(6px, 1.2vw, 18px);
+  --field-gap: clamp(3px, 0.75vh, 6px);
+  --field-margin: clamp(4px, 1vh, 10px);
+  --control-height: clamp(24px, 4.2vh, 34px);
+  --radius: clamp(8px, 1.6vh, 14px);
+  --text: clamp(11px, 1.85vh, 14px);
+  --text-small: clamp(10px, 1.7vh, 13px);
+  --title: clamp(14px, 2.25vh, 16px);
+  --hero-title: clamp(18px, 3vh, 26px);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", "Microsoft YaHei", sans-serif;
@@ -15,8 +28,8 @@
 
 body {
   margin: 0;
-  min-width: 1120px;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background:
     radial-gradient(circle at top left, rgba(59, 130, 246, 0.18), transparent 32rem),
     radial-gradient(circle at top right, rgba(16, 185, 129, 0.14), transparent 30rem),
@@ -27,6 +40,7 @@ button,
 input,
 select {
   font: inherit;
+  font-size: var(--text);
 }
 
 button {
@@ -41,72 +55,94 @@ button:disabled {
 
 .app {
   width: 100%;
-  min-height: 100vh;
-  padding: 28px;
+  height: 100vh;
+  padding: var(--page-pad-y) var(--page-pad-x);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  gap: var(--gap);
+  margin-bottom: clamp(5px, 1.2vh, 14px);
+  flex-shrink: 0;
+  min-width: 0;
 }
 
 .topbar h1 {
   margin: 0;
-  font-size: 32px;
-  letter-spacing: -0.04em;
+  font-size: var(--hero-title);
+  letter-spacing: 0;
 }
 
 .topbar p {
-  margin: 6px 0 0;
+  margin: clamp(2px, 0.6vh, 6px) 0 0;
   color: #a1a1aa;
+  font-size: var(--text-small);
 }
 
 .topbarActions {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: clamp(5px, 1vw, 10px);
+  flex-shrink: 0;
 }
 
 .layout {
+  flex: 1;
+  min-height: 0;
   display: grid;
-  grid-template-columns: 370px minmax(420px, 1fr) 400px;
-  gap: 18px;
-  align-items: start;
+  grid-template-columns:
+    minmax(185px, 0.9fr)
+    minmax(220px, 1.15fr)
+    minmax(210px, 1fr);
+  gap: var(--gap);
+  overflow: hidden;
 }
 
 .panel {
   background: rgba(24, 24, 27, 0.76);
   border: 1px solid rgba(63, 63, 70, 0.85);
-  border-radius: 20px;
-  padding: 18px;
+  border-radius: var(--radius);
+  padding: var(--panel-pad-y) var(--panel-pad-x);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.24);
   backdrop-filter: blur(18px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
 }
 
 .panelHeader {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 18px;
+  gap: var(--gap);
+  margin-bottom: clamp(5px, 1.1vh, 12px);
+  flex-shrink: 0;
 }
 
 .panelHeader h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--title);
 }
 
 .panelHeader p {
-  margin: 4px 0 0;
+  margin: clamp(2px, 0.6vh, 4px) 0 0;
   color: #a1a1aa;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 
 .count {
-  min-width: 32px;
-  height: 28px;
-  padding: 0 10px;
+  min-width: clamp(24px, 3vw, 32px);
+  height: clamp(22px, 3.6vh, 28px);
+  padding: 0 clamp(6px, 1vw, 10px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -118,24 +154,26 @@ button:disabled {
 .field {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  margin-bottom: 14px;
+  gap: var(--field-gap);
+  margin-bottom: var(--field-margin);
+  flex-shrink: 0;
+  min-width: 0;
 }
 
 .field span {
   color: #d4d4d8;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 
 input,
 select {
   width: 100%;
-  height: 40px;
-  border-radius: 12px;
+  height: var(--control-height);
+  border-radius: clamp(7px, 1.4vh, 10px);
   border: 1px solid #3f3f46;
   background: rgba(9, 9, 11, 0.74);
   color: #f4f4f5;
-  padding: 0 12px;
+  padding: 0 clamp(7px, 1vw, 10px);
   outline: none;
 }
 
@@ -151,25 +189,28 @@ input::placeholder {
 
 .twoColumns {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(5px, 1vw, 10px);
+  flex-shrink: 0;
 }
 
 .primary,
 .secondary,
 .ghost {
-  min-height: 38px;
-  border-radius: 12px;
-  padding: 0 14px;
+  min-height: var(--control-height);
+  border-radius: clamp(7px, 1.4vh, 10px);
+  padding: 0 clamp(8px, 1.2vw, 12px);
   color: #f8fafc;
 }
 
 .primary {
   background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  flex-shrink: 0;
 }
 
 .secondary {
   background: rgba(63, 63, 70, 0.9);
+  flex-shrink: 0;
 }
 
 .ghost {
@@ -179,18 +220,23 @@ input::placeholder {
 
 .full {
   width: 100%;
+  flex-shrink: 0;
 }
 
 .notice {
-  margin-bottom: 14px;
-  padding: 12px 14px;
-  border-radius: 14px;
+  margin-bottom: clamp(5px, 1vh, 10px);
+  padding: clamp(6px, 1.2vh, 10px) clamp(8px, 1.3vw, 14px);
+  border-radius: var(--radius);
   color: #e5e7eb;
   background: rgba(30, 41, 59, 0.9);
   border: 1px solid rgba(71, 85, 105, 0.8);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
+  gap: var(--gap);
+  min-width: 0;
+  font-size: var(--text-small);
 }
 
 .notice.warning {
@@ -204,61 +250,74 @@ input::placeholder {
 }
 
 .notice button {
-  border-radius: 10px;
+  border-radius: clamp(7px, 1.4vh, 10px);
   background: rgba(24, 24, 27, 0.6);
   color: #fca5a5;
-  padding: 6px 10px;
+  padding: clamp(4px, 0.9vh, 6px) clamp(7px, 1vw, 10px);
 }
 
 .hint {
-  margin: 0 0 14px;
+  margin: 0 0 clamp(6px, 1.4vh, 14px);
   color: #a1a1aa;
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 
 .modelPanel {
-  min-height: 440px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modelPanel > .modelDetail,
+.modelPanel > .empty {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .empty {
-  margin-top: 16px;
-  min-height: 120px;
+  margin-top: clamp(5px, 1.2vh, 12px);
+  min-height: clamp(44px, 10vh, 80px);
   border: 1px dashed #52525b;
-  border-radius: 16px;
+  border-radius: var(--radius);
   color: #a1a1aa;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 24px;
+  padding: clamp(8px, 1.8vh, 16px);
+  font-size: var(--text-small);
 }
 
 .modelDetail {
-  margin-top: 16px;
-  border-radius: 16px;
+  margin-top: clamp(5px, 1.2vh, 12px);
+  border-radius: var(--radius);
   border: 1px solid rgba(63, 63, 70, 0.9);
-  padding: 16px;
+  padding: clamp(7px, 1.4vh, 14px);
   background: rgba(9, 9, 11, 0.48);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: clamp(5px, 1.2vh, 12px);
+  overflow: hidden;
 }
 
 .modelMeta {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: clamp(3px, 0.8vh, 6px);
   color: #a1a1aa;
-  font-size: 13px;
+  font-size: var(--text-small);
+  overflow: hidden;
 }
 
 .modelMeta > div {
   display: flex;
-  gap: 8px;
+  gap: clamp(5px, 1vw, 8px);
+  min-width: 0;
 }
 
 .metaLabel {
-  min-width: 40px;
+  min-width: clamp(32px, 4vw, 40px);
   color: #71717a;
 }
 
@@ -266,16 +325,22 @@ input::placeholder {
   word-break: break-all;
 }
 
+.modelMeta > div > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .badge {
-  height: 26px;
-  padding: 0 9px;
+  height: clamp(18px, 3.2vh, 24px);
+  padding: 0 clamp(5px, 0.9vw, 8px);
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: clamp(9px, 1.5vh, 11px);
   background: #3f3f46;
   color: #e4e4e7;
+  flex-shrink: 0;
 }
 
 .badge.ready {
@@ -299,19 +364,20 @@ input::placeholder {
 }
 
 .progressBlock {
-  margin-top: 12px;
+  margin-top: clamp(4px, 1vh, 10px);
+  flex-shrink: 0;
 }
 
 .progressText {
   display: flex;
   justify-content: space-between;
   color: #a1a1aa;
-  font-size: 12px;
-  margin-bottom: 7px;
+  font-size: clamp(10px, 1.6vh, 12px);
+  margin-bottom: clamp(3px, 0.8vh, 7px);
 }
 
 .progress {
-  height: 8px;
+  height: clamp(5px, 1.2vh, 8px);
   overflow: hidden;
   border-radius: 999px;
   background: #27272a;
@@ -324,20 +390,22 @@ input::placeholder {
 }
 
 .inlineError {
-  margin: 12px 0 0;
-  padding: 10px;
+  margin: clamp(4px, 0.9vh, 8px) 0 0;
+  padding: clamp(5px, 1vh, 8px);
   white-space: pre-wrap;
   word-break: break-word;
-  border-radius: 12px;
+  border-radius: clamp(7px, 1.4vh, 10px);
   background: rgba(127, 29, 29, 0.34);
   color: #fecaca;
-  font-size: 12px;
+  font-size: clamp(10px, 1.6vh, 12px);
+  flex-shrink: 0;
 }
 
 .modelActions {
-  margin-top: 10px;
+  margin-top: clamp(3px, 0.8vh, 6px);
   display: flex;
   justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 .dangerText {
@@ -346,34 +414,37 @@ input::placeholder {
 
 .switchRow {
   display: flex;
-  gap: 18px;
-  margin: 6px 0 16px;
+  flex-wrap: wrap;
+  gap: clamp(8px, 1.6vw, 18px);
+  margin: clamp(2px, 0.6vh, 4px) 0 clamp(5px, 1.2vh, 12px);
   color: #d4d4d8;
-  font-size: 13px;
+  font-size: var(--text-small);
+  flex-shrink: 0;
 }
 
 .switchRow label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: clamp(5px, 0.9vw, 8px);
 }
 
 .switchRow input {
-  width: 16px;
-  height: 16px;
+  width: clamp(13px, 2.2vh, 16px);
+  height: clamp(13px, 2.2vh, 16px);
 }
 
 .serverActions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(5px, 1vw, 10px);
+  margin-top: clamp(5px, 1.2vh, 12px);
+  flex-shrink: 0;
 }
 
 .serverDot {
-  width: 13px;
-  height: 13px;
-  margin-top: 4px;
+  width: clamp(9px, 1.8vh, 13px);
+  height: clamp(9px, 1.8vh, 13px);
+  margin-top: clamp(2px, 0.7vh, 4px);
   border-radius: 999px;
   background: #71717a;
   box-shadow: 0 0 0 6px rgba(113, 113, 122, 0.16);
@@ -385,20 +456,22 @@ input::placeholder {
 }
 
 .statusBox {
-  margin-top: 16px;
-  border-radius: 14px;
+  margin-top: clamp(5px, 1.2vh, 12px);
+  border-radius: var(--radius);
   background: rgba(9, 9, 11, 0.5);
   border: 1px solid rgba(63, 63, 70, 0.75);
   overflow: hidden;
+  flex: 1;
+  min-height: 0;
 }
 
 .statusLine {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
-  padding: 10px 12px;
+  gap: var(--gap);
+  padding: clamp(4px, 0.9vh, 7px) clamp(6px, 1vw, 10px);
   border-bottom: 1px solid rgba(63, 63, 70, 0.55);
-  font-size: 13px;
+  font-size: clamp(10px, 1.6vh, 12px);
 }
 
 .statusLine:last-child {
@@ -417,19 +490,22 @@ input::placeholder {
 }
 
 .logPanel {
-  margin-top: 18px;
+  margin-top: clamp(5px, 1.2vh, 14px);
+  flex-shrink: 0;
+  overflow: hidden;
+  max-height: clamp(76px, 18vh, 170px);
 }
 
 .logBox {
   margin: 0;
-  min-height: 170px;
-  max-height: 280px;
-  overflow: auto;
-  border-radius: 14px;
+  min-height: clamp(40px, 8vh, 64px);
+  max-height: clamp(44px, 10vh, 120px);
+  overflow: hidden;
+  border-radius: var(--radius);
   background: #050505;
   border: 1px solid rgba(63, 63, 70, 0.78);
   color: #d4d4d8;
-  padding: 14px;
-  font-size: 12px;
-  line-height: 1.6;
+  padding: clamp(6px, 1.2vh, 12px);
+  font-size: clamp(10px, 1.55vh, 12px);
+  line-height: 1.35;
 }
