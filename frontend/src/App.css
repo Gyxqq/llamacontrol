@@ -673,6 +673,85 @@ input::placeholder {
   padding-block: clamp(3px, 0.65vh, 5px);
 }
 
+/* ── Model Search ── */
+
+.searchRow {
+  display: flex;
+  gap: clamp(4px, 0.8vw, 8px);
+}
+
+.searchRow input {
+  flex: 1;
+  min-width: 0;
+}
+
+.searchBtn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.searchResults {
+  max-height: clamp(120px, 28vh, 240px);
+  overflow-y: auto;
+  border: 1px solid #3f3f46;
+  border-radius: clamp(7px, 1.4vh, 10px);
+  background: rgba(9, 9, 11, 0.9);
+  margin-top: 2px;
+}
+
+.searchResult {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: clamp(5px, 1vh, 8px) clamp(7px, 1vw, 10px);
+  cursor: pointer;
+  font-size: var(--text-small);
+  transition: background 0.1s;
+}
+
+.searchResult:hover {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.searchResult.active {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+
+.searchResultId {
+  color: #e4e4e7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.searchResultDownloads {
+  color: #71717a;
+  flex-shrink: 0;
+  font-size: clamp(9px, 1.4vh, 11px);
+}
+
+.selectedRepo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: clamp(4px, 0.8vh, 6px) clamp(6px, 1vw, 8px);
+  border-radius: clamp(7px, 1.4vh, 10px);
+  background: rgba(30, 58, 138, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+  font-size: var(--text-small);
+}
+
+.selectedRepo button {
+  font-size: clamp(9px, 1.4vh, 11px);
+  padding: 0 clamp(5px, 0.8vw, 8px);
+  min-height: 0;
+  height: clamp(18px, 3vh, 24px);
+}
+
 @media (max-height: 700px) {
   :root {
     --page-pad-y: 6px;

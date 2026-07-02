@@ -3,6 +3,7 @@ import "./App.css";
 
 import type {
   DownloadRequest,
+  HuggingFaceModel,
   ModelRecord,
   ServerConfig,
   ServerStatus,
@@ -97,6 +98,12 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [operation, setOperation] = useState("");
   const [error, setError] = useState("");
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<HuggingFaceModel[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [ggufFiles, setGgufFiles] = useState<string[]>([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
 
   const backendReady = hasBackend();
 
@@ -303,6 +310,64 @@ function App() {
     }
   }
 
+  async function searchModels() {
+    const query = searchQuery.trim();
+    if (!query) {
+      setError("请输入关键词搜索 Hugging Face 模型");
+      return;
+    }
+    setSearching(true);
+    setError("");
+    setSearchResults([]);
+    try {
+      const results = await backend.SearchHuggingFaceModels(query);
+      setSearchResults(results ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  // Auto-fetch GGUF files when a repo is selected
+  useEffect(() => {
+    if (!downloadForm.repoId) {
+      setGgufFiles([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function fetchFiles() {
+      setLoadingFiles(true);
+      try {
+        const files = await backend.ListModelGguFiles(downloadForm.repoId);
+        if (!cancelled) {
+          setGgufFiles(files ?? []);
+          // Auto-select if only one GGUF file
+          if (files?.length === 1) {
+            updateDownloadForm("filename", files[0]);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setGgufFiles([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingFiles(false);
+        }
+      }
+    }
+
+    fetchFiles();
+    return () => {
+      cancelled = true;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [downloadForm.repoId]);
+
   return (
     <main className="app">
       <div className="titlebar">
@@ -391,17 +456,63 @@ function App() {
           </div>
 
           <label className="field">
-            <span>选择模型</span>
-            <select
-              value={downloadForm.repoId}
-              onChange={(event) => {
-                updateDownloadForm("repoId", event.target.value);
-                updateDownloadForm("filename", "");
-              }}
-            >
-              <option value="">请选择模型仓库</option>
-              <option value="TheBloke/Llama-2-7B-Chat-GGUF">TheBloke/Llama-2-7B-Chat-GGUF</option>
-            </select>
+            <span>搜索模型</span>
+            <div className="searchRow">
+              <input
+                placeholder="输入关键词搜索 Hugging Face 模型库..."
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") void searchModels();
+                }}
+              />
+              <button
+                className="primary searchBtn"
+                onClick={() => void searchModels()}
+                disabled={searching}
+              >
+                {searching ? "搜索中..." : "搜索"}
+              </button>
+            </div>
+
+            {searchResults.length > 0 && (
+              <div className="searchResults">
+                {searchResults.map((model) => (
+                  <div
+                    key={model.id}
+                    className={`searchResult ${downloadForm.repoId === model.id ? "active" : ""}`}
+                    onClick={() => {
+                      updateDownloadForm("repoId", model.id);
+                      updateDownloadForm("filename", "");
+                      setSearchResults([]);
+                    }}
+                  >
+                    <span className="searchResultId">{model.id}</span>
+                    {model.downloads != null && model.downloads > 0 && (
+                      <span className="searchResultDownloads">
+                        {model.downloads.toLocaleString()} 下载
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {downloadForm.repoId && (
+              <div className="selectedRepo">
+                <span>已选: {downloadForm.repoId}</span>
+                <button
+                  className="ghost"
+                  onClick={() => {
+                    updateDownloadForm("repoId", "");
+                    updateDownloadForm("filename", "");
+                    setGgufFiles([]);
+                  }}
+                >
+                  清除
+                </button>
+              </div>
+            )}
           </label>
 
           <label className="field">
@@ -411,8 +522,22 @@ function App() {
               onChange={(event) =>
                 updateDownloadForm("filename", event.target.value)
               }
+              disabled={!downloadForm.repoId || loadingFiles}
             >
-              <option value="">请选择 GGUF 文件</option>
+              <option value="">
+                {loadingFiles
+                  ? "加载中..."
+                  : ggufFiles.length > 0
+                    ? "请选择 GGUF 文件"
+                    : downloadForm.repoId
+                      ? "该仓库没有 GGUF 文件"
+                      : "请先搜索并选择模型仓库"}
+              </option>
+              {ggufFiles.map((file) => (
+                <option key={file} value={file}>
+                  {file}
+                </option>
+              ))}
             </select>
           </label>
 
