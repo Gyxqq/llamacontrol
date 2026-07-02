@@ -511,12 +511,15 @@ function App() {
           setDownloadingLlama(false);
 
           if (progress.completed) {
-            // Success — refresh llama-server info
-            if (!active) return;
-            const info = await backend.GetLlamaServerInfo();
-            if (!active) return;
-            setLlamaInfo(info);
-            if (info.found) {
+            // Success — update llama-server info from progress data directly
+            // (avoids race condition where setDownloadingLlama(false) triggers
+            //  effect cleanup, setting active=false before GetLlamaServerInfo resolves)
+            setLlamaInfo({
+              found: progress.found,
+              version: progress.version,
+              path: progress.path,
+            });
+            if (progress.found) {
               setSelectedRelease("");
               setSelectedAsset("");
               setReleaseAssets([]);
