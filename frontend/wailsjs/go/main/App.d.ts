@@ -16,6 +16,8 @@ export function GetLlamaServerDownloadProgress():Promise<main.LlamaServerDownloa
 
 export function GetLlamaServerInfo():Promise<main.LlamaServerInfo>;
 
+export function GetServerConfig():Promise<main.ServerConfig>;
+
 export function GetServerStatus():Promise<main.ServerStatus>;
 
 export function ListLlamaReleaseAssets(arg1:string):Promise<Array<main.LlamaReleaseAsset>>;
@@ -27,6 +29,8 @@ export function ListModelGguFiles(arg1:string):Promise<Array<string>>;
 export function ListModels():Promise<Array<main.ModelRecord>>;
 
 export function OpenModelsDir():Promise<void>;
+
+export function SaveServerConfig(arg1:main.ServerConfig):Promise<void>;
 
 export function SearchHuggingFaceModels(arg1:string):Promise<Array<main.HuggingFaceModel>>;
 

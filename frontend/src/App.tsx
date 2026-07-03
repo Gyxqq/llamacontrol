@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 
 import type {
@@ -37,6 +37,17 @@ const defaultServerConfig: ServerConfig = {
   flashAttention: true,
   background: true,
   extraArgs: "",
+
+  hostEnabled: true,
+  portEnabled: true,
+  ctxSizeEnabled: true,
+  gpuLayersEnabled: true,
+  threadsEnabled: true,
+  batchSizeEnabled: true,
+  ubatchSizeEnabled: true,
+  parallelEnabled: true,
+  flashAttentionEnabled: true,
+  extraArgsEnabled: true,
 };
 
 const emptyStatus: ServerStatus = {
@@ -240,6 +251,46 @@ function App() {
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendReady, selectedModelId]);
+
+  // Load saved server config on startup
+  const hasLoadedConfig = useRef(false);
+
+  useEffect(() => {
+    if (!backendReady) return;
+
+    async function loadSavedConfig() {
+      try {
+        const saved = await backend.GetServerConfig();
+        if (saved) {
+          setServerConfig((old) => ({
+            ...defaultServerConfig,
+            ...saved,
+          }));
+        }
+      } catch (err) {
+        // Silently ignore — use defaults
+      } finally {
+        hasLoadedConfig.current = true;
+      }
+    }
+    void loadSavedConfig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendReady]);
+
+  // Debounced auto-save: persist config 800ms after last change
+  useEffect(() => {
+    if (!hasLoadedConfig.current) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        await backend.SaveServerConfig(serverConfig);
+      } catch (err) {
+        // Silently ignore transient errors
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [serverConfig]);
 
   function updateDownloadForm<K extends keyof DownloadRequest>(
     key: K,

@@ -40,6 +40,10 @@ type App struct {
 	// Model metadata (persisted to metadata.json)
 	models []ModelRecord
 
+	// Server config (persisted to server-config.json)
+	serverConfig     ServerConfig
+	serverConfigPath string
+
 	// Active downloads (in-memory only)
 	activeDownloads map[string]*downloadTask
 
@@ -113,6 +117,18 @@ type ServerConfig struct {
 	FlashAttention bool   `json:"flashAttention"`
 	Background     bool   `json:"background"`
 	ExtraArgs      string `json:"extraArgs"`
+
+	// Enabled flags — each controls whether its parameter is included in the llama-server command
+	HostEnabled           bool `json:"hostEnabled"`
+	PortEnabled           bool `json:"portEnabled"`
+	CtxSizeEnabled        bool `json:"ctxSizeEnabled"`
+	GPULayersEnabled      bool `json:"gpuLayersEnabled"`
+	ThreadsEnabled        bool `json:"threadsEnabled"`
+	BatchSizeEnabled      bool `json:"batchSizeEnabled"`
+	UbatchSizeEnabled     bool `json:"ubatchSizeEnabled"`
+	ParallelEnabled       bool `json:"parallelEnabled"`
+	FlashAttentionEnabled bool `json:"flashAttentionEnabled"`
+	ExtraArgsEnabled      bool `json:"extraArgsEnabled"`
 }
 
 // ServerStatus reports the current llama-server state
@@ -222,6 +238,7 @@ func (a *App) startup(ctx context.Context) {
 	a.modelsDir = filepath.Join(appDataDir, "models")
 	a.binDir = filepath.Join(appDataDir, "bin")
 	a.metadataPath = filepath.Join(appDataDir, "metadata.json")
+	a.serverConfigPath = filepath.Join(appDataDir, "server-config.json")
 
 	// Ensure directories exist
 	if err := os.MkdirAll(a.modelsDir, 0755); err != nil {
@@ -238,6 +255,9 @@ func (a *App) startup(ctx context.Context) {
 
 	// Validate local files against metadata
 	a.validateFiles()
+
+	// Load saved server config
+	a.loadServerConfig()
 
 	log.Infof("startup: ready, %d model(s) in metadata", len(a.models))
 }
@@ -307,6 +327,69 @@ func (a *App) saveMetadata() error {
 	}
 
 	return nil
+}
+
+// ──────────────────────────────────────────────
+// Server config persistence
+// ──────────────────────────────────────────────
+
+// loadServerConfig reads server-config.json from disk into a.serverConfig.
+func (a *App) loadServerConfig() {
+	log.Debugf("server-config: loading from %s", a.serverConfigPath)
+
+	data, err := os.ReadFile(a.serverConfigPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Debug("server-config: file does not exist, using defaults")
+			a.serverConfig = ServerConfig{}
+			return
+		}
+		log.Warnf("server-config: failed to read: %v", err)
+		a.serverConfig = ServerConfig{}
+		return
+	}
+
+	var config ServerConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		log.Warnf("server-config: failed to parse: %v", err)
+		a.serverConfig = ServerConfig{}
+		return
+	}
+
+	a.serverConfig = config
+	log.Infof("server-config: loaded saved config")
+}
+
+// saveServerConfigFile atomically writes a.serverConfig to server-config.json.
+func (a *App) saveServerConfigFile() error {
+	log.Debugf("server-config: saving")
+
+	data, err := json.MarshalIndent(a.serverConfig, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal server config: %w", err)
+	}
+
+	tmpPath := a.serverConfigPath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write server config tmp: %w", err)
+	}
+	if err := os.Rename(tmpPath, a.serverConfigPath); err != nil {
+		return fmt.Errorf("failed to rename server config: %w", err)
+	}
+
+	return nil
+}
+
+// GetServerConfig returns the saved server configuration.
+func (a *App) GetServerConfig() ServerConfig {
+	return a.serverConfig
+}
+
+// SaveServerConfig persists the given server configuration and returns the saved config.
+func (a *App) SaveServerConfig(config ServerConfig) error {
+	log.Infof("server-config: saving config (modelId=%s)", config.ModelID)
+	a.serverConfig = config
+	return a.saveServerConfigFile()
 }
 
 // findModel returns the index of a model by ID, or -1 if not found.
@@ -942,18 +1025,30 @@ func validateServerConfig(config ServerConfig) error {
 
 // buildServerArgs constructs the argument slice for llama-server.
 func buildServerArgs(modelPath string, config ServerConfig) []string {
-	args := []string{
-		"-m", modelPath,
-		"--host", config.Host,
-		"--port", strconv.Itoa(config.Port),
-		"-c", strconv.Itoa(config.CtxSize),
-		"-ngl", strconv.Itoa(config.GPULayers),
-		"-t", strconv.Itoa(config.Threads),
-		"-b", strconv.Itoa(config.BatchSize),
-		"-ub", strconv.Itoa(config.UbatchSize),
-		"-np", strconv.Itoa(config.Parallel),
-	}
+	args := []string{"-m", modelPath}
 
+	if config.Host != "" {
+		args = append(args, "--host", config.Host)
+	}
+	if config.Port >= 1 && config.Port <= 65535 {
+		args = append(args, "--port", strconv.Itoa(config.Port))
+	}
+	if config.CtxSize >= 128 {
+		args = append(args, "-c", strconv.Itoa(config.CtxSize))
+	}
+	args = append(args, "-ngl", strconv.Itoa(config.GPULayers))
+	if config.Threads >= 1 {
+		args = append(args, "-t", strconv.Itoa(config.Threads))
+	}
+	if config.BatchSize >= 1 {
+		args = append(args, "-b", strconv.Itoa(config.BatchSize))
+	}
+	if config.UbatchSize >= 1 {
+		args = append(args, "-ub", strconv.Itoa(config.UbatchSize))
+	}
+	if config.Parallel >= 1 {
+		args = append(args, "-np", strconv.Itoa(config.Parallel))
+	}
 	if config.FlashAttention {
 		args = append(args, "--flash-attn", "on")
 	}
@@ -1136,6 +1231,12 @@ func (a *App) StartLlamaServer(config ServerConfig) error {
 		a.serverState.status.Running = false
 		a.serverState.cmd = nil
 	}()
+
+	// Persist the config for next launch
+	a.serverConfig = config
+	if err := a.saveServerConfigFile(); err != nil {
+		log.Warnf("server-config: failed to persist after start: %v", err)
+	}
 
 	return nil
 }

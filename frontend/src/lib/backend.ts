@@ -114,4 +114,12 @@ export const backend = {
   GetAppLogs(): Promise<string[]> {
     return call<string[]>("GetAppLogs");
   },
+
+  GetServerConfig(): Promise<ServerConfig> {
+    return call<ServerConfig>("GetServerConfig");
+  },
+
+  SaveServerConfig(config: ServerConfig): Promise<void> {
+    return call<void>("SaveServerConfig", config);
+  },
 };

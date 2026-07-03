@@ -30,6 +30,10 @@ export function GetLlamaServerInfo() {
   return window['go']['main']['App']['GetLlamaServerInfo']();
 }
 
+export function GetServerConfig() {
+  return window['go']['main']['App']['GetServerConfig']();
+}
+
 export function GetServerStatus() {
   return window['go']['main']['App']['GetServerStatus']();
 }
@@ -52,6 +56,10 @@ export function ListModels() {
 
 export function OpenModelsDir() {
   return window['go']['main']['App']['OpenModelsDir']();
+}
+
+export function SaveServerConfig(arg1) {
+  return window['go']['main']['App']['SaveServerConfig'](arg1);
 }
 
 export function SearchHuggingFaceModels(arg1) {

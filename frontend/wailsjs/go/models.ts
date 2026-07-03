@@ -173,6 +173,16 @@ export namespace main {
 	    flashAttention: boolean;
 	    background: boolean;
 	    extraArgs: string;
+	    hostEnabled: boolean;
+	    portEnabled: boolean;
+	    ctxSizeEnabled: boolean;
+	    gpuLayersEnabled: boolean;
+	    threadsEnabled: boolean;
+	    batchSizeEnabled: boolean;
+	    ubatchSizeEnabled: boolean;
+	    parallelEnabled: boolean;
+	    flashAttentionEnabled: boolean;
+	    extraArgsEnabled: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ServerConfig(source);
@@ -192,6 +202,16 @@ export namespace main {
 	        this.flashAttention = source["flashAttention"];
 	        this.background = source["background"];
 	        this.extraArgs = source["extraArgs"];
+	        this.hostEnabled = source["hostEnabled"];
+	        this.portEnabled = source["portEnabled"];
+	        this.ctxSizeEnabled = source["ctxSizeEnabled"];
+	        this.gpuLayersEnabled = source["gpuLayersEnabled"];
+	        this.threadsEnabled = source["threadsEnabled"];
+	        this.batchSizeEnabled = source["batchSizeEnabled"];
+	        this.ubatchSizeEnabled = source["ubatchSizeEnabled"];
+	        this.parallelEnabled = source["parallelEnabled"];
+	        this.flashAttentionEnabled = source["flashAttentionEnabled"];
+	        this.extraArgsEnabled = source["extraArgsEnabled"];
 	    }
 	}
 	export class ServerStatus {

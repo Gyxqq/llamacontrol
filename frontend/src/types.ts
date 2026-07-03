@@ -45,6 +45,18 @@ export interface ServerConfig {
   flashAttention: boolean;
   background: boolean;
   extraArgs: string;
+
+  // Enabled flags — gate whether each parameter is passed to llama-server
+  hostEnabled: boolean;
+  portEnabled: boolean;
+  ctxSizeEnabled: boolean;
+  gpuLayersEnabled: boolean;
+  threadsEnabled: boolean;
+  batchSizeEnabled: boolean;
+  ubatchSizeEnabled: boolean;
+  parallelEnabled: boolean;
+  flashAttentionEnabled: boolean;
+  extraArgsEnabled: boolean;
 }
 
 export interface ServerStatus {
