@@ -213,7 +213,7 @@ func TestBuildServerArgs(t *testing.T) {
 	checkArg(t, args, "-b", "512")
 	checkArg(t, args, "-ub", "512")
 	checkArg(t, args, "-np", "1")
-	checkArg(t, args, "-fa", "")
+	checkArg(t, args, "--flash-attn", "")
 
 	// Verify extra args are appended
 	checkArg(t, args, "--verbose", "")
