@@ -947,7 +947,7 @@ func buildServerArgs(modelPath string, config ServerConfig) []string {
 	}
 
 	if config.FlashAttention {
-		args = append(args, "-fa")
+		args = append(args, "--flash-attn", "on")
 	}
 
 	// Append extra args (split by whitespace)
