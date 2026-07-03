@@ -334,25 +334,49 @@ func (a *App) saveMetadata() error {
 // ──────────────────────────────────────────────
 
 // loadServerConfig reads server-config.json from disk into a.serverConfig.
+// When no file exists, it populates default values.
 func (a *App) loadServerConfig() {
 	log.Debugf("server-config: loading from %s", a.serverConfigPath)
+
+	defaults := ServerConfig{
+		Host:                  "127.0.0.1",
+		Port:                  8080,
+		CtxSize:               4096,
+		GPULayers:             999,
+		Threads:               8,
+		BatchSize:             512,
+		UbatchSize:            512,
+		Parallel:              1,
+		FlashAttention:        true,
+		Background:            true,
+		HostEnabled:           true,
+		PortEnabled:           true,
+		CtxSizeEnabled:        true,
+		GPULayersEnabled:      true,
+		ThreadsEnabled:        true,
+		BatchSizeEnabled:      true,
+		UbatchSizeEnabled:     true,
+		ParallelEnabled:       true,
+		FlashAttentionEnabled: true,
+		ExtraArgsEnabled:      true,
+	}
 
 	data, err := os.ReadFile(a.serverConfigPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			log.Debug("server-config: file does not exist, using defaults")
-			a.serverConfig = ServerConfig{}
+			a.serverConfig = defaults
 			return
 		}
 		log.Warnf("server-config: failed to read: %v", err)
-		a.serverConfig = ServerConfig{}
+		a.serverConfig = defaults
 		return
 	}
 
 	var config ServerConfig
 	if err := json.Unmarshal(data, &config); err != nil {
 		log.Warnf("server-config: failed to parse: %v", err)
-		a.serverConfig = ServerConfig{}
+		a.serverConfig = defaults
 		return
 	}
 

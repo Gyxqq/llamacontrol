@@ -261,11 +261,15 @@ function App() {
     async function loadSavedConfig() {
       try {
         const saved = await backend.GetServerConfig();
-        if (saved) {
+        if (saved && saved.host) {
           setServerConfig((old) => ({
             ...defaultServerConfig,
             ...saved,
           }));
+          // Also restore the selected model ID so the dropdown matches
+          if (saved.modelId) {
+            setSelectedModelId(saved.modelId);
+          }
         }
       } catch (err) {
         // Silently ignore — use defaults

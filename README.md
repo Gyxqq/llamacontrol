@@ -1,19 +1,176 @@
-# README
+<div align="center">
+  <br />
+  <img src="build/windows/icon.ico" alt="llamacontrol" width="96" height="96" />
+  <br />
+  <h1>🦙 llamacontrol</h1>
+  <p>
+    <strong>GGUF 模型下载 · 管理 · 推理服务</strong>
+    <br />
+    <strong>GGUF Model Download · Management · Inference Server</strong>
+  </p>
+  <p>
+    <a href="https://go.dev/doc/go1.23">
+      <img src="https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go" alt="Go 1.23+" />
+    </a>
+    <a href="https://wails.io">
+      <img src="https://img.shields.io/badge/Wails-2.12-DF4A2C?style=flat&logo=wails" alt="Wails 2.12" />
+    </a>
+    <a href="https://react.dev">
+      <img src="https://img.shields.io/badge/React-18-61DAFB?style=flat&logo=react" alt="React 18" />
+    </a>
+    <a href="https://www.typescriptlang.org">
+      <img src="https://img.shields.io/badge/TypeScript-4.6-3178C6?style=flat&logo=typescript" alt="TypeScript 4.6" />
+    </a>
+    <a href="https://github.com/ggml-org/llama.cpp">
+      <img src="https://img.shields.io/badge/llama.cpp-server-F5A623?style=flat" alt="llama.cpp" />
+    </a>
+  </p>
+  <br />
+</div>
 
-## About
+---
 
-This is the official Wails React-TS template.
+## 📖 简介 · Introduction
 
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+**llamacontrol** 是一款基于 [Wails v2](https://wails.io) 构建的桌面应用，专为简化 GGUF 格式语言模型的本地部署而设计。它提供了一个直观的图形界面，让您无需记忆命令行参数即可轻松管理模型和运行 [llama.cpp](https://github.com/ggml-org/llama.cpp) 推理服务。
 
-## Live Development
+**llamacontrol** is a desktop application built with [Wails v2](https://wails.io), designed to simplify local deployment of GGUF-format language models. It provides an intuitive GUI for managing models and running [llama.cpp](https://github.com/ggml-org/llama.cpp) inference servers without memorizing command-line arguments.
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+<br />
 
-## Building
+## ✨ 功能 · Features
 
-To build a redistributable, production mode package, use `wails build`.
+<div>
+
+### ⬇️ 模型下载 · Model Download
+从 Hugging Face 搜索并下载 GGUF 模型，支持断点续传和取消。
+Search and download GGUF models from Hugging Face with resume and cancellation support.
+
+### 📂 模型管理 · Model Management
+浏览已下载的模型，查看详细信息，删除不需要的模型。
+Browse downloaded models, view details, and delete unwanted models.
+
+### 🚀 一键推理 · One-Click Inference
+选择模型、配置参数、启动 llama-server，一键运行。
+Select a model, configure parameters, start llama-server — all in one click.
+
+### 📦 自动部署 · Auto Deployment
+自动检测、下载并解压 llama.cpp 发布包，支持 CUDA 运行时。
+Auto-detect, download and extract llama.cpp releases with CUDA runtime support.
+
+### 📋 实时日志 · Live Logs
+实时查看应用日志和 llama-server 输出，方便调试。
+View live application logs and llama-server output for easy debugging.
+
+### 🎨 现代 UI · Modern UI
+深色玻璃态设计，无边框窗口，中文界面。
+Dark glassmorphism design, frameless window, Chinese interface.
+
+</div>
+
+<br />
+
+## 🖼️ 截图 · Screenshots
+
+> *Coming soon — 截图待补*
+
+<br />
+
+## 🚀 快速开始 · Quick Start
+
+### 环境要求 · Prerequisites
+
+| 工具 Tool | 版本 Version | 用途 Purpose |
+|---|---|---|
+| [Go](https://go.dev/dl/) | ≥ 1.23 | 后端编译 Backend compile |
+| [Node.js](https://nodejs.org/) | ≥ 16 | 前端构建 Frontend build |
+| [Wails CLI](https://wails.io/docs/gettingstarted/installation) | ≥ 2.12 | 构建工具 Build tool |
+
+```bash
+# 安装 Wails CLI · Install Wails CLI
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+# 克隆项目 · Clone
+git clone https://github.com/yourusername/llamacontrol
+cd llamacontrol
+```
+
+### 开发模式 · Development
+
+```bash
+# 热重载开发（前端 + 后端）· Hot-reload development
+wails dev
+
+# 仅前端开发（Vite 独立服务器）· Frontend-only development
+cd frontend && npm run dev
+```
+
+### 生产构建 · Production Build
+
+```bash
+# 构建平台原生二进制 + 安装包
+# Build native binary + installer
+wails build
+```
+
+<br />
+
+## 🏗️ 架构 · Architecture
+
+```
+llamacontrol/
+├── main.go                 # 应用入口 · App entrypoint
+├── app.go                  # 后端逻辑（~2000 行）· Backend logic
+├── app_test.go             # Go 单元测试 · Go unit tests
+├── log.go                  # 日志系统 · Logging setup
+├── wails.json              # Wails 项目配置 · Wails config
+├── go.mod                  # Go 模块依赖 · Go dependencies
+├── build/                  # 构建资源 · Build assets
+│   └── windows/            # Windows 图标和清单
+├── frontend/               # React + TypeScript 前端
+│   ├── src/
+│   │   ├── App.tsx         # 主组件（~1300 行）· Main component
+│   │   ├── App.css         # 样式（暗色玻璃态）· Styles
+│   │   ├── types.ts        # TypeScript 类型定义
+│   │   └── lib/backend.ts  # Wails 绑定封装
+│   └── vite.config.ts      # Vite 构建配置
+└── CLAUDE.md               # 项目文档 · Project docs
+```
+
+### 通信层 · Communication Layer
+
+前端通过 `window.go.main.App` 调用 Go 方法（Wails 自动生成绑定），`backend.ts` 封装为类型安全的异步函数。
+
+The frontend calls Go methods via `window.go.main.App` (auto-generated by Wails), wrapped as type-safe async functions in `backend.ts`.
+
+<br />
+
+## 💻 技术栈 · Tech Stack
+
+| 层级 Layer | 技术 Technology |
+|---|---|
+| **后端 Backend** | [Go](https://go.dev/) · [Wails v2](https://wails.io/) · [logrus](https://github.com/sirupsen/logrus) · [sevenzip](https://github.com/bodgit/sevenzip) |
+| **前端 Frontend** | [React 18](https://react.dev/) · [TypeScript 4.6](https://www.typescriptlang.org/) · [Vite 3](https://vitejs.dev/) · CSS3 |
+| **推理引擎 Engine** | [llama.cpp](https://github.com/ggml-org/llama.cpp) (llama-server) · GGUF |
+| **模型源 Source** | [Hugging Face](https://huggingface.co/) Model Hub |
+
+<br />
+
+## 📦 已实现 · Implemented
+
+- [x] Hugging Face 模型搜索 · Model search
+- [x] GGUF 文件列表 · GGUF file listing
+- [x] 模型下载（支持取消）· Download with cancel
+- [x] 模型元数据持久化 · Metadata persistence
+- [x] 本地文件校验 · File validation
+- [x] llama-server 启动/停止 · Server start/stop
+- [x] 服务参数配置 · Server config (host, port, context, GPU, etc.)
+- [x] 服务参数持久化 · Config persistence
+- [x] Flash Attention 支持
+- [x] llama.cpp 自动下载安装 · Auto download & install
+- [x] CUDA 运行时下载 · CUDA runtime download
+- [x] 7z/zip 解压 · Archive extraction
+- [x] 实时日志查看 · Live log viewer
+- [x] 暗色玻璃态 UI · Dark glassmorphism UI
+
+<br />
