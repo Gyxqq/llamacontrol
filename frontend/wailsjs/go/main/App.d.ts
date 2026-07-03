@@ -20,6 +20,8 @@ export function GetServerConfig():Promise<main.ServerConfig>;
 
 export function GetServerStatus():Promise<main.ServerStatus>;
 
+export function HideToTray():Promise<void>;
+
 export function ListLlamaReleaseAssets(arg1:string):Promise<Array<main.LlamaReleaseAsset>>;
 
 export function ListLlamaServerReleases():Promise<Array<main.LlamaServerRelease>>;
@@ -30,9 +32,13 @@ export function ListModels():Promise<Array<main.ModelRecord>>;
 
 export function OpenModelsDir():Promise<void>;
 
+export function QuitApp():Promise<void>;
+
 export function SaveServerConfig(arg1:main.ServerConfig):Promise<void>;
 
 export function SearchHuggingFaceModels(arg1:string):Promise<Array<main.HuggingFaceModel>>;
+
+export function ShowMainWindow():Promise<void>;
 
 export function StartLlamaServer(arg1:main.ServerConfig):Promise<void>;
 

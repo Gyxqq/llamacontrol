@@ -23,7 +23,6 @@ declare global {
       WindowUnmaximise: () => void;
       WindowToggleMaximise: () => void;
       WindowIsMaximised: () => Promise<boolean>;
-      Quit: () => void;
     };
   }
 }
@@ -121,5 +120,9 @@ export const backend = {
 
   SaveServerConfig(config: ServerConfig): Promise<void> {
     return call<void>("SaveServerConfig", config);
+  },
+
+  HideToTray(): Promise<void> {
+    return call<void>("HideToTray");
   },
 };

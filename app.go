@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // NewApp creates a new App application struct
@@ -23,6 +25,7 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.startTray()
 
 	// Initialize app log buffer and hook into logrus
 	a.appLogs = &appLogBuffer{max: 200}
@@ -62,4 +65,38 @@ func (a *App) startup(ctx context.Context) {
 	a.loadServerConfig()
 
 	log.Infof("startup: ready, %d model(s) in metadata", len(a.models))
+}
+
+// HideToTray hides the main window while keeping the app running.
+func (a *App) HideToTray() {
+	if a.ctx == nil {
+		return
+	}
+	wailsruntime.WindowHide(a.ctx)
+}
+
+// ShowMainWindow restores the app from the tray.
+func (a *App) ShowMainWindow() {
+	if a.ctx == nil {
+		return
+	}
+	wailsruntime.WindowShow(a.ctx)
+	wailsruntime.WindowUnminimise(a.ctx)
+}
+
+// QuitApp exits the app from the tray menu.
+func (a *App) QuitApp() {
+	if a.ctx == nil {
+		return
+	}
+	a.allowQuit = true
+	wailsruntime.Quit(a.ctx)
+}
+
+func (a *App) beforeClose(ctx context.Context) bool {
+	if a.allowQuit {
+		return false
+	}
+	wailsruntime.WindowHide(ctx)
+	return true
 }

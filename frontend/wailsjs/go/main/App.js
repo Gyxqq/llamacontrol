@@ -38,6 +38,10 @@ export function GetServerStatus() {
   return window['go']['main']['App']['GetServerStatus']();
 }
 
+export function HideToTray() {
+  return window['go']['main']['App']['HideToTray']();
+}
+
 export function ListLlamaReleaseAssets(arg1) {
   return window['go']['main']['App']['ListLlamaReleaseAssets'](arg1);
 }
@@ -58,12 +62,20 @@ export function OpenModelsDir() {
   return window['go']['main']['App']['OpenModelsDir']();
 }
 
+export function QuitApp() {
+  return window['go']['main']['App']['QuitApp']();
+}
+
 export function SaveServerConfig(arg1) {
   return window['go']['main']['App']['SaveServerConfig'](arg1);
 }
 
 export function SearchHuggingFaceModels(arg1) {
   return window['go']['main']['App']['SearchHuggingFaceModels'](arg1);
+}
+
+export function ShowMainWindow() {
+  return window['go']['main']['App']['ShowMainWindow']();
 }
 
 export function StartLlamaServer(arg1) {

@@ -14,6 +14,7 @@ import (
 
 type App struct {
 	ctx          context.Context
+	allowQuit    bool
 	httpClient   *http.Client
 	modelsDir    string
 	binDir       string

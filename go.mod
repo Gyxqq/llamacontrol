@@ -6,6 +6,7 @@ require (
 	github.com/bodgit/sevenzip v1.5.2
 	github.com/sirupsen/logrus v1.9.4
 	github.com/wailsapp/wails/v2 v2.12.0
+	golang.org/x/sys v0.30.0
 )
 
 require (
@@ -45,7 +46,6 @@ require (
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 )
 

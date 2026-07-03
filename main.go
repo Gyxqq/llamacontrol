@@ -20,12 +20,13 @@ func main() {
 
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:     "llamacontrol",
-		Width:     1024,
-		Height:    768,
-		MinWidth:  900,
-		MinHeight: 620,
-		Frameless: true,
+		Title:             "llamacontrol",
+		Width:             1024,
+		Height:            768,
+		MinWidth:          900,
+		MinHeight:         620,
+		Frameless:         true,
+		HideWindowOnClose: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -34,7 +35,8 @@ func main() {
 			WebviewIsTransparent: true,
 			WindowIsTranslucent:  true,
 		},
-		OnStartup: app.startup,
+		OnStartup:     app.startup,
+		OnBeforeClose: app.beforeClose,
 		Bind: []interface{}{
 			app,
 		},

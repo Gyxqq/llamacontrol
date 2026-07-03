@@ -174,7 +174,11 @@ function App() {
   }
 
   function closeWin() {
-    window.runtime?.Quit();
+    if (backendReady) {
+      void backend.HideToTray();
+      return;
+    }
+    window.runtime?.WindowMinimise();
   }
 
   const selectedModel = useMemo(() => {
