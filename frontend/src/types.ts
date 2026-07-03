@@ -83,6 +83,13 @@ export interface LlamaServerDownloadProgress {
   found: boolean;
   version?: string;
   path?: string;
+  // CUDA Runtime download progress
+  cudaDownloading: boolean;
+  cudaAssetName: string;
+  cudaTotalBytes: number;
+  cudaDownloadedBytes: number;
+  cudaCompleted: boolean;
+  cudaError?: string;
 }
 
 export interface LlamaServerRelease {

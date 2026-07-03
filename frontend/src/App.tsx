@@ -75,6 +75,14 @@ function llamaDownloadPercent(progress: LlamaServerDownloadProgress): number {
   );
 }
 
+function cudaDownloadPercent(progress: LlamaServerDownloadProgress): number {
+  if (!progress.cudaTotalBytes || !progress.cudaDownloadedBytes) return 0;
+  return Math.max(
+    0,
+    Math.min(100, (progress.cudaDownloadedBytes / progress.cudaTotalBytes) * 100),
+  );
+}
+
 function statusText(state: ModelRecord["state"]): string {
   switch (state) {
     case "ready":
@@ -135,6 +143,12 @@ function App() {
     found: false,
     version: "",
     path: "",
+    cudaDownloading: false,
+    cudaAssetName: "",
+    cudaTotalBytes: 0,
+    cudaDownloadedBytes: 0,
+    cudaCompleted: false,
+    cudaError: "",
   });
 
   const backendReady = hasBackend();
@@ -406,6 +420,12 @@ function App() {
       found: false,
       version: "",
       path: "",
+      cudaDownloading: false,
+      cudaAssetName: "",
+      cudaTotalBytes: 0,
+      cudaDownloadedBytes: 0,
+      cudaCompleted: false,
+      cudaError: "",
     });
     try {
       await backend.DownloadLlamaServerRelease(selectedRelease, selectedAsset);
@@ -569,6 +589,38 @@ function App() {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendReady, downloadingLlama]);
+
+  const showCudaProgress =
+    llamaDlProgress.cudaDownloading ||
+    llamaDlProgress.cudaCompleted ||
+    Boolean(llamaDlProgress.cudaError) ||
+    Boolean(llamaDlProgress.cudaAssetName);
+
+  const cudaProgressCard = showCudaProgress ? (
+    <div className="downloadProgress" style={{ marginTop: 8 }}>
+      <div className="downloadProgressHeader">
+        <span className="downloadProgressName" title={llamaDlProgress.cudaAssetName}>
+          CUDA Runtime {llamaDlProgress.cudaAssetName.replace(/\.zip$/i, "")}
+        </span>
+        <span className="downloadProgressPct">
+          {llamaDlProgress.cudaCompleted
+            ? "完成"
+            : `${cudaDownloadPercent(llamaDlProgress).toFixed(1)}%`}
+        </span>
+      </div>
+      <div className="progress">
+        <div
+          style={{ width: `${cudaDownloadPercent(llamaDlProgress)}%` }}
+        />
+      </div>
+      <div className="downloadProgressMeta">
+        <span>
+          {llamaDlProgress.cudaError ||
+            `${formatBytes(llamaDlProgress.cudaDownloadedBytes)} / ${formatBytes(llamaDlProgress.cudaTotalBytes)}`}
+        </span>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <main className="app">
@@ -826,27 +878,31 @@ function App() {
             </div>
 
             {downloadingLlama ? (
-              <div className="downloadProgress">
-                <div className="downloadProgressHeader">
-                  <span className="downloadProgressName" title={llamaDlProgress.assetName || selectedAsset}>
-                    {llamaDlProgress.releaseTag || selectedRelease}
-                  </span>
-                  <span className="downloadProgressPct">
-                    {llamaDownloadPercent(llamaDlProgress).toFixed(1)}%
-                  </span>
+              <>
+                <div className="downloadProgress">
+                  <div className="downloadProgressHeader">
+                    <span className="downloadProgressName" title={llamaDlProgress.assetName || selectedAsset}>
+                      {llamaDlProgress.releaseTag || selectedRelease}
+                    </span>
+                    <span className="downloadProgressPct">
+                      {llamaDownloadPercent(llamaDlProgress).toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="progress">
+                    <div
+                      style={{ width: `${llamaDownloadPercent(llamaDlProgress)}%` }}
+                    />
+                  </div>
+                  <div className="downloadProgressMeta">
+                    <span>
+                      {formatBytes(llamaDlProgress.downloadedBytes)} /{" "}
+                      {formatBytes(llamaDlProgress.totalBytes)}
+                    </span>
+                  </div>
                 </div>
-                <div className="progress">
-                  <div
-                    style={{ width: `${llamaDownloadPercent(llamaDlProgress)}%` }}
-                  />
-                </div>
-                <div className="downloadProgressMeta">
-                  <span>
-                    {formatBytes(llamaDlProgress.downloadedBytes)} /{" "}
-                    {formatBytes(llamaDlProgress.totalBytes)}
-                  </span>
-                </div>
-              </div>
+
+                {cudaProgressCard}
+              </>
             ) : llamaInfo.found ? (
               <>
                 <p className="hint">
@@ -856,6 +912,7 @@ function App() {
                     <span className="metaPath"> · {llamaInfo.path}</span>
                   )}
                 </p>
+                {cudaProgressCard}
                 <div className="modelActions">
                   <button
                     className="ghost dangerText"

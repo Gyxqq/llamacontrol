@@ -63,6 +63,12 @@ export namespace main {
 	    found: boolean;
 	    version: string;
 	    path: string;
+	    cudaDownloading: boolean;
+	    cudaAssetName: string;
+	    cudaTotalBytes: number;
+	    cudaDownloadedBytes: number;
+	    cudaCompleted: boolean;
+	    cudaError: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new LlamaServerDownloadProgress(source);
@@ -80,6 +86,12 @@ export namespace main {
 	        this.found = source["found"];
 	        this.version = source["version"];
 	        this.path = source["path"];
+	        this.cudaDownloading = source["cudaDownloading"];
+	        this.cudaAssetName = source["cudaAssetName"];
+	        this.cudaTotalBytes = source["cudaTotalBytes"];
+	        this.cudaDownloadedBytes = source["cudaDownloadedBytes"];
+	        this.cudaCompleted = source["cudaCompleted"];
+	        this.cudaError = source["cudaError"];
 	    }
 	}
 	export class LlamaServerInfo {

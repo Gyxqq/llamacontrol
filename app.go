@@ -47,8 +47,8 @@ type App struct {
 	serverState *serverState
 
 	// GitHub releases cache
-	releasesCache     []LlamaServerRelease
-	releasesCachedAt  time.Time
+	releasesCache    []LlamaServerRelease
+	releasesCachedAt time.Time
 
 	// llama.cpp download progress
 	llamaDlProgress LlamaServerDownloadProgress
@@ -150,6 +150,14 @@ type LlamaServerDownloadProgress struct {
 	Found           bool   `json:"found"`
 	Version         string `json:"version"`
 	Path            string `json:"path"`
+
+	// CUDA Runtime download progress
+	CudaDownloading     bool   `json:"cudaDownloading"`
+	CudaAssetName       string `json:"cudaAssetName"`
+	CudaTotalBytes      int64  `json:"cudaTotalBytes"`
+	CudaDownloadedBytes int64  `json:"cudaDownloadedBytes"`
+	CudaCompleted       bool   `json:"cudaCompleted"`
+	CudaError           string `json:"cudaError"`
 }
 
 // LlamaServerRelease represents a llama.cpp GitHub release for the frontend.
@@ -367,7 +375,7 @@ func (a *App) validateFiles() {
 					a.models[i].SizeBytes = 0
 					a.models[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 					changed = true
-			}
+				}
 			}
 			continue
 		}
@@ -596,17 +604,17 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 					if _, writeErr := outFile.Write(buf[:n]); writeErr != nil {
 						done <- fmt.Errorf("写入文件失败: %w", writeErr)
 						return
-				}
+					}
 					downloaded += int64(n)
-			}
+				}
 				if readErr != nil {
 					if readErr == io.EOF {
 						done <- nil
-				} else {
+					} else {
 						done <- readErr
-				}
+					}
 					return
-			}
+				}
 			}
 		}
 	}()
@@ -620,7 +628,7 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 				if errors.Is(err, context.Canceled) {
 					a.failDownload(id, "下载已取消")
 					return
-			}
+				}
 				a.failDownload(id, fmt.Sprintf("下载失败: %v", err))
 				return
 			}
@@ -667,10 +675,10 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 					a.models[idx].DownloadedBytes = downloaded
 					if totalSize > 0 {
 						a.models[idx].SizeBytes = totalSize
-				}
+					}
 					a.models[idx].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 					a.saveMetadata()
-			}
+				}
 				a.mu.Unlock()
 				lastSave = downloaded
 			}
@@ -994,7 +1002,7 @@ func (a *App) StartLlamaServer(config ServerConfig) error {
 	}
 
 	// Find the llama-server binary
-		serverPath, err := a.locateLlamaServer()
+	serverPath, err := a.locateLlamaServer()
 	if err != nil {
 		return err
 	}
@@ -1434,7 +1442,7 @@ func (a *App) ListLlamaReleaseAssets(releaseTag string) ([]LlamaReleaseAsset, er
 
 	var assets []LlamaReleaseAsset
 	for _, asset := range release.Assets {
-		if platformAssetMatch(asset.Name) {
+		if platformAssetMatch(asset.Name) && !isCudaCrtAsset(asset.Name) {
 			assets = append(assets, LlamaReleaseAsset{
 				Name:        asset.Name,
 				Size:        asset.Size,
@@ -1689,6 +1697,16 @@ func (a *App) downloadLlamaServerRelease(releaseTag string, assetName string) {
 		log.Warnf("llama: failed to write version file: %v", err)
 	}
 
+	// ── CUDA Runtime download (Windows only) ──
+	// If the selected asset is a CUDA build, also download and install
+	// the matching CUDA CRT DLLs from the same release.
+	if runtime.GOOS == "windows" {
+		if cudaAsset := findMatchingCudaCrt(release.Assets, assetName); cudaAsset != nil {
+			log.Infof("llama: found matching CUDA CRT asset: %s", cudaAsset.Name)
+			a.downloadCudaCrt(*cudaAsset, tempDir)
+		}
+	}
+
 	// Clear the releases cache so next listing reflects installed state
 	a.releasesCache = nil
 
@@ -1783,7 +1801,7 @@ func extractArchive(archivePath, destDir string) error {
 			if f.FileInfo().IsDir() {
 				if err := os.MkdirAll(fpath, 0755); err != nil {
 					return err
-			}
+				}
 				continue
 			}
 
@@ -1825,7 +1843,7 @@ func extractArchive(archivePath, destDir string) error {
 			if f.FileInfo().IsDir() {
 				if err := os.MkdirAll(fpath, 0755); err != nil {
 					return err
-			}
+				}
 				continue
 			}
 
