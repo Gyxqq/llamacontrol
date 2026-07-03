@@ -6,8 +6,11 @@
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
+  "preBuildHooks": {
+    "windows/*": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/prepare-wails-installer.ps1"
+  },
   "author": {
-    "name": "",
-    "email": ""
+    "name": "gyxqqq",
+    "email": "2277904687@qq.com"
   }
 }
