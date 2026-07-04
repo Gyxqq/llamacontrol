@@ -49,6 +49,7 @@ type App struct {
 type downloadTask struct {
 	cancel  context.CancelFunc
 	modelID string
+	done    chan struct{}
 }
 
 // serverState tracks the llama-server subprocess

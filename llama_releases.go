@@ -262,79 +262,37 @@ func (a *App) downloadLlamaServerRelease(releaseTag string, assetName string) {
 
 	archivePath := filepath.Join(tempDir, bestAsset.Name)
 
-	dlReq, err := http.NewRequestWithContext(a.ctx, http.MethodGet, bestAsset.DownloadURL, nil)
-	if err != nil {
-		a.failLlamaDownload(fmt.Sprintf("创建下载请求失败: %v", err))
-		return
-	}
-	dlReq.Header.Set("User-Agent", "llamacontrol/1.0")
-	dlReq.Header.Set("Accept", "application/octet-stream")
-
-	dlResp, err := a.httpClient.Do(dlReq)
-	if err != nil {
-		a.failLlamaDownload(fmt.Sprintf("下载失败: %v", err))
-		return
-	}
-	defer dlResp.Body.Close()
-
-	if dlResp.StatusCode != http.StatusOK && dlResp.StatusCode != http.StatusFound {
-		a.failLlamaDownload(fmt.Sprintf("下载返回 %d", dlResp.StatusCode))
-		return
-	}
-
-	outFile, err := os.Create(archivePath)
-	if err != nil {
-		a.failLlamaDownload(fmt.Sprintf("创建临时文件失败: %v", err))
-		return
-	}
-
-	// Download with progress tracking
-	buf := make([]byte, 32*1024) // 32KB buffer
-	var downloaded int64
 	startedAt := time.Now()
-	lastUpdate := time.Now()
 
 	a.mu.Lock()
 	a.llamaDlProgress.DownloadStartedAt = startedAt.UTC().Format(time.RFC3339)
 	a.mu.Unlock()
 
-	for {
-		n, readErr := dlResp.Body.Read(buf)
-		if n > 0 {
-			if _, writeErr := outFile.Write(buf[:n]); writeErr != nil {
-				outFile.Close()
-				os.Remove(archivePath)
-				a.failLlamaDownload(fmt.Sprintf("写入文件失败: %v", writeErr))
-				return
-			}
-			downloaded += int64(n)
-
-			// Update progress at most every 200ms
-			if time.Since(lastUpdate) > 200*time.Millisecond {
-				speed, elapsed, remaining := downloadStats(downloaded, totalSize, startedAt)
-				a.mu.Lock()
-				a.llamaDlProgress.DownloadedBytes = downloaded
-				a.llamaDlProgress.DownloadSpeedBytesPerSecond = speed
-				a.llamaDlProgress.DownloadElapsedSeconds = elapsed
-				a.llamaDlProgress.DownloadRemainingSeconds = remaining
-				a.mu.Unlock()
-				lastUpdate = time.Now()
-			}
+	result, err := downloadFileAuto(a.ctx, a.httpClient, bestAsset.DownloadURL, map[string]string{
+		"Accept": "application/octet-stream",
+	}, archivePath, totalSize, func(downloaded, total int64) {
+		speed, elapsed, remaining := downloadStats(downloaded, total, startedAt)
+		a.mu.Lock()
+		a.llamaDlProgress.DownloadedBytes = downloaded
+		if total > 0 {
+			a.llamaDlProgress.TotalBytes = total
 		}
-		if readErr != nil {
-			if readErr == io.EOF {
-				break
-			}
-			outFile.Close()
-			os.Remove(archivePath)
-			a.failLlamaDownload(fmt.Sprintf("下载失败: %v", readErr))
-			return
-		}
+		a.llamaDlProgress.DownloadSpeedBytesPerSecond = speed
+		a.llamaDlProgress.DownloadElapsedSeconds = elapsed
+		a.llamaDlProgress.DownloadRemainingSeconds = remaining
+		a.mu.Unlock()
+	})
+	if err != nil {
+		os.Remove(archivePath)
+		a.failLlamaDownload(fmt.Sprintf("下载失败: %v", err))
+		return
 	}
 
-	outFile.Close()
-
 	// Final progress update
+	if result.TotalBytes > 0 {
+		totalSize = result.TotalBytes
+	}
+	downloaded := result.DownloadedBytes
 	speed, elapsed, _ := downloadStats(downloaded, totalSize, startedAt)
 	a.mu.Lock()
 	a.llamaDlProgress.DownloadedBytes = downloaded

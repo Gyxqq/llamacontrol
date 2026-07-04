@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -48,11 +46,13 @@ func (a *App) StartModelDownload(req DownloadRequest) error {
 
 	// Create a cancel context for this download
 	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
 
 	// Store download task
 	a.activeDownloads[id] = &downloadTask{
 		cancel:  cancel,
 		modelID: id,
+		done:    done,
 	}
 
 	// Create or update model record
@@ -85,12 +85,13 @@ func (a *App) StartModelDownload(req DownloadRequest) error {
 		a.mu.Unlock()
 		cancel()
 		delete(a.activeDownloads, id)
+		close(done)
 		return fmt.Errorf("保存元数据失败: %w", err)
 	}
 	a.mu.Unlock()
 
 	// Launch download in background
-	go a.downloadModel(ctx, id, req)
+	go a.downloadModel(ctx, id, req, done)
 
 	log.Infof("download: started %s/%s (revision=%s, id=%s)", req.RepoID, req.Filename, req.Revision, id)
 
@@ -98,7 +99,9 @@ func (a *App) StartModelDownload(req DownloadRequest) error {
 }
 
 // downloadModel performs the actual HTTP download in a goroutine.
-func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest) {
+func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest, taskDone chan struct{}) {
+	defer close(taskDone)
+
 	// Build HF resolve URL
 	downloadURL := fmt.Sprintf(
 		"https://huggingface.co/%s/resolve/%s/%s",
@@ -107,56 +110,19 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 
 	log.Infof("download: starting %s from %s", id, downloadURL)
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
-	if err != nil {
-		a.failDownload(id, fmt.Sprintf("创建请求失败: %v", err))
-		return
-	}
-
-	httpReq.Header.Set("User-Agent", "llamacontrol/1.0")
-
-	// Add auth token for private models
+	headers := map[string]string{}
 	if req.HfToken != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+req.HfToken)
-	}
-
-	resp, err := a.httpClient.Do(httpReq)
-	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			a.failDownload(id, "下载已取消")
-			return
-		}
-		a.failDownload(id, fmt.Sprintf("HTTP 请求失败: %v", err))
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		a.failDownload(id, fmt.Sprintf("Hugging Face 返回 %d: %s", resp.StatusCode, string(body)))
-		return
-	}
-
-	// Determine total size from Content-Length
-	var totalSize int64 = -1
-	if resp.ContentLength > 0 {
-		totalSize = resp.ContentLength
+		headers["Authorization"] = "Bearer " + req.HfToken
 	}
 
 	// Write to .part file
 	partialPath := a.modelFilePath(id) + ".part"
 	finalPath := a.modelFilePath(id)
 
-	outFile, err := os.Create(partialPath)
-	if err != nil {
-		a.failDownload(id, fmt.Sprintf("创建临时文件失败: %v", err))
-		return
-	}
-	defer outFile.Close()
-
 	// Download with progress tracking
-	buf := make([]byte, 32*1024) // 32KB buffer
 	var downloaded atomic.Int64
+	var totalBytes atomic.Int64
+	totalBytes.Store(-1)
 	var lastSave int64 // last time we saved metadata (bytes written)
 	startedAt := time.Now()
 	startedAtText := startedAt.UTC().Format(time.RFC3339)
@@ -173,35 +139,17 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 
 	// Channel to signal completion
 	done := make(chan error, 1)
+	var result downloadResult
 
 	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				// Cancelled — close and clean up
-				outFile.Close()
-				os.Remove(partialPath)
-				done <- ctx.Err()
-				return
-			default:
-				n, readErr := resp.Body.Read(buf)
-				if n > 0 {
-					if _, writeErr := outFile.Write(buf[:n]); writeErr != nil {
-						done <- fmt.Errorf("写入文件失败: %w", writeErr)
-						return
-					}
-					downloaded.Add(int64(n))
-				}
-				if readErr != nil {
-					if readErr == io.EOF {
-						done <- nil
-					} else {
-						done <- readErr
-					}
-					return
-				}
+		var err error
+		result, err = downloadFileAuto(ctx, a.httpClient, downloadURL, headers, partialPath, -1, func(current, total int64) {
+			downloaded.Store(current)
+			if total > 0 {
+				totalBytes.Store(total)
 			}
-		}
+		})
+		done <- err
 	}()
 
 	// Progress update loop
@@ -211,6 +159,7 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 			if err != nil {
 				// Check if cancelled
 				if errors.Is(err, context.Canceled) {
+					os.Remove(partialPath)
 					a.failDownload(id, "下载已取消")
 					return
 				}
@@ -219,8 +168,6 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 			}
 
 			// Download complete — atomically rename
-			outFile.Close()
-
 			if err := os.Rename(partialPath, finalPath); err != nil {
 				a.failDownload(id, fmt.Sprintf("重命名文件失败: %v", err))
 				return
@@ -232,6 +179,8 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 			var actualSize int64
 			if info != nil {
 				actualSize = info.Size()
+			} else if result.DownloadedBytes > 0 {
+				actualSize = result.DownloadedBytes
 			} else {
 				actualSize = currentDownloaded
 			}
@@ -253,11 +202,16 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 			delete(a.activeDownloads, id)
 			a.mu.Unlock()
 
-			log.Infof("download: completed %s (%d bytes)", id, actualSize)
+			if result.Parallel {
+				log.Infof("download: completed %s (%d bytes, %d workers)", id, actualSize, result.Workers)
+			} else {
+				log.Infof("download: completed %s (%d bytes, single stream)", id, actualSize)
+			}
 			return
 
 		case <-progressTicker.C:
 			currentDownloaded := downloaded.Load()
+			totalSize := totalBytes.Load()
 			speed, elapsed, remaining := downloadStats(currentDownloaded, totalSize, startedAt)
 
 			// Update progress in metadata
@@ -324,6 +278,7 @@ func (a *App) CancelModelDownload(modelId string) error {
 
 	// Cancel the context
 	task.cancel()
+	<-task.done
 	log.Infof("download: cancelled %s", modelId)
 
 	return nil

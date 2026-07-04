@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,71 +88,32 @@ func (a *App) downloadCudaCrt(cudaAsset ghReleaseAsset, tempDir string) {
 
 	cudaArchivePath := filepath.Join(tempDir, cudaAsset.Name)
 
-	dlReq, err := http.NewRequestWithContext(a.ctx, http.MethodGet, cudaAsset.DownloadURL, nil)
+	result, err := downloadFileAuto(a.ctx, a.httpClient, cudaAsset.DownloadURL, map[string]string{
+		"Accept": "application/octet-stream",
+	}, cudaArchivePath, cudaAsset.Size, func(downloaded, total int64) {
+		speed, elapsed, remaining := downloadStats(downloaded, total, startedAt)
+		a.mu.Lock()
+		a.llamaDlProgress.CudaDownloadedBytes = downloaded
+		if total > 0 {
+			a.llamaDlProgress.CudaTotalBytes = total
+		}
+		a.llamaDlProgress.CudaDownloadSpeedBytesPerSecond = speed
+		a.llamaDlProgress.CudaDownloadElapsedSeconds = elapsed
+		a.llamaDlProgress.CudaDownloadRemainingSeconds = remaining
+		a.mu.Unlock()
+	})
 	if err != nil {
-		a.setCudaCrtError(fmt.Sprintf("创建 CUDA CRT 下载请求失败: %v", err))
-		return
-	}
-	dlReq.Header.Set("User-Agent", "llamacontrol/1.0")
-	dlReq.Header.Set("Accept", "application/octet-stream")
-
-	dlResp, err := a.httpClient.Do(dlReq)
-	if err != nil {
+		os.Remove(cudaArchivePath)
 		a.setCudaCrtError(fmt.Sprintf("CUDA CRT 下载失败: %v", err))
 		return
 	}
-	defer dlResp.Body.Close()
 
-	if dlResp.StatusCode != http.StatusOK && dlResp.StatusCode != http.StatusFound {
-		a.setCudaCrtError(fmt.Sprintf("CUDA CRT 下载返回 %d", dlResp.StatusCode))
-		return
+	cudaDownloaded := result.DownloadedBytes
+	totalSize := cudaAsset.Size
+	if result.TotalBytes > 0 {
+		totalSize = result.TotalBytes
 	}
-
-	outFile, err := os.Create(cudaArchivePath)
-	if err != nil {
-		a.setCudaCrtError(fmt.Sprintf("创建 CUDA CRT 临时文件失败: %v", err))
-		return
-	}
-
-	buf := make([]byte, 32*1024)
-	var cudaDownloaded int64
-	lastUpdate := time.Now()
-
-	for {
-		n, readErr := dlResp.Body.Read(buf)
-		if n > 0 {
-			if _, writeErr := outFile.Write(buf[:n]); writeErr != nil {
-				outFile.Close()
-				os.Remove(cudaArchivePath)
-				a.setCudaCrtError(fmt.Sprintf("写入 CUDA CRT 文件失败: %v", writeErr))
-				return
-			}
-			cudaDownloaded += int64(n)
-			if time.Since(lastUpdate) > 200*time.Millisecond {
-				speed, elapsed, remaining := downloadStats(cudaDownloaded, cudaAsset.Size, startedAt)
-				a.mu.Lock()
-				a.llamaDlProgress.CudaDownloadedBytes = cudaDownloaded
-				a.llamaDlProgress.CudaDownloadSpeedBytesPerSecond = speed
-				a.llamaDlProgress.CudaDownloadElapsedSeconds = elapsed
-				a.llamaDlProgress.CudaDownloadRemainingSeconds = remaining
-				a.mu.Unlock()
-				lastUpdate = time.Now()
-			}
-		}
-		if readErr != nil {
-			if readErr == io.EOF {
-				break
-			}
-			outFile.Close()
-			os.Remove(cudaArchivePath)
-			a.setCudaCrtError(fmt.Sprintf("CUDA CRT 下载失败: %v", readErr))
-			return
-		}
-	}
-
-	outFile.Close()
-
-	speed, elapsed, _ := downloadStats(cudaDownloaded, cudaAsset.Size, startedAt)
+	speed, elapsed, _ := downloadStats(cudaDownloaded, totalSize, startedAt)
 	a.mu.Lock()
 	a.llamaDlProgress.CudaDownloadedBytes = cudaDownloaded
 	a.llamaDlProgress.CudaDownloadSpeedBytesPerSecond = speed
