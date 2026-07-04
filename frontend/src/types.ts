@@ -115,3 +115,8 @@ export interface LlamaReleaseAsset {
   size: number;
   downloadUrl: string;
 }
+
+export interface GguFileInfo {
+  path: string;
+  size: number;
+}

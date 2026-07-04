@@ -3,6 +3,7 @@ import "./App.css";
 
 import type {
   DownloadRequest,
+  GguFileInfo,
   HuggingFaceModel,
   LlamaReleaseAsset,
   LlamaServerDownloadProgress,
@@ -133,7 +134,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<HuggingFaceModel[]>([]);
   const [searching, setSearching] = useState(false);
-  const [ggufFiles, setGgufFiles] = useState<string[]>([]);
+  const [ggufFiles, setGgufFiles] = useState<GguFileInfo[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
 
   const [llamaInfo, setLlamaInfo] = useState<LlamaServerInfo>({ found: false });
@@ -527,7 +528,7 @@ function App() {
           setGgufFiles(files ?? []);
           // Auto-select if only one GGUF file
           if (files?.length === 1) {
-            updateDownloadForm("filename", files[0]);
+            updateDownloadForm("filename", files[0].path);
           }
         }
       } catch (err) {
@@ -847,8 +848,8 @@ function App() {
                       : "请先搜索并选择模型仓库"}
               </option>
               {ggufFiles.map((file) => (
-                <option key={file} value={file}>
-                  {file}
+                <option key={file.path} value={file.path}>
+                  {file.path} ({formatBytes(file.size)})
                 </option>
               ))}
             </select>

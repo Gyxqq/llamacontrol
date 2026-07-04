@@ -26,7 +26,7 @@ export function ListLlamaReleaseAssets(arg1:string):Promise<Array<main.LlamaRele
 
 export function ListLlamaServerReleases():Promise<Array<main.LlamaServerRelease>>;
 
-export function ListModelGguFiles(arg1:string):Promise<Array<string>>;
+export function ListModelGguFiles(arg1:string):Promise<Array<main.GguFileInfo>>;
 
 export function ListModels():Promise<Array<main.ModelRecord>>;
 

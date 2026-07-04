@@ -1,5 +1,6 @@
 import type {
   DownloadRequest,
+  GguFileInfo,
   HuggingFaceModel,
   LlamaReleaseAsset,
   LlamaServerDownloadProgress,
@@ -82,8 +83,8 @@ export const backend = {
     return call<HuggingFaceModel[]>("SearchHuggingFaceModels", query);
   },
 
-  ListModelGguFiles(repoId: string): Promise<string[]> {
-    return call<string[]>("ListModelGguFiles", repoId);
+  ListModelGguFiles(repoId: string): Promise<GguFileInfo[]> {
+    return call<GguFileInfo[]>("ListModelGguFiles", repoId);
   },
 
   GetLlamaServerInfo(): Promise<LlamaServerInfo> {

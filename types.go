@@ -213,5 +213,11 @@ type hfModelRaw struct {
 type fileTreeEntry struct {
 	Type string `json:"type"`
 	Path string `json:"path"`
-	Size int    `json:"size"`
+	Size int64  `json:"size"`
+}
+
+// GguFileInfo carries path + size for a .gguf file listed from a HF repo.
+type GguFileInfo struct {
+	Path string `json:"path"`
+	Size int64  `json:"size"`
 }

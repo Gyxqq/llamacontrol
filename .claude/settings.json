@@ -9,7 +9,8 @@
       "Bash(sed -i '1121s/^\\\\t\\\\t\\\\t/\\\\t\\\\t/' app.go)",
       "Bash(sed -i '1122s/^\\\\t\\\\t\\\\t\\\\t/\\\\t\\\\t\\\\t/' app.go)",
       "Bash(sed -i '1123s/^\\\\t\\\\t\\\\t/\\\\t\\\\t/' app.go)",
-      "Bash(sed -i '1124s/^\\\\t\\\\t\\\\t/\\\\t\\\\t/' app.go)"
+      "Bash(sed -i '1124s/^\\\\t\\\\t\\\\t/\\\\t\\\\t/' app.go)",
+      "Bash(npx vite *)"
     ]
   }
 }

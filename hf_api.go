@@ -73,8 +73,8 @@ func (a *App) SearchHuggingFaceModels(query string) ([]HuggingFaceModel, error) 
 	return models, nil
 }
 
-// ListModelGguFiles lists all .gguf files in a Hugging Face model repo
-func (a *App) ListModelGguFiles(repoId string) ([]string, error) {
+// ListModelGguFiles lists all .gguf files (with sizes) in a Hugging Face model repo.
+func (a *App) ListModelGguFiles(repoId string) ([]GguFileInfo, error) {
 	log.Debugf("hf: listing GGUF files for repo=%s", repoId)
 	apiURL := fmt.Sprintf("https://huggingface.co/api/models/%s/tree/main?recursive=1", repoId)
 
@@ -105,10 +105,13 @@ func (a *App) ListModelGguFiles(repoId string) ([]string, error) {
 		return nil, fmt.Errorf("failed to parse file tree: %w", err)
 	}
 
-	var files []string
+	var files []GguFileInfo
 	for _, entry := range entries {
 		if entry.Type == "file" && strings.HasSuffix(strings.ToLower(entry.Path), ".gguf") {
-			files = append(files, entry.Path)
+			files = append(files, GguFileInfo{
+				Path: entry.Path,
+				Size: entry.Size,
+			})
 		}
 	}
 

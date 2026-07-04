@@ -20,6 +20,20 @@ export namespace main {
 	        this.hfToken = source["hfToken"];
 	    }
 	}
+	export class GguFileInfo {
+	    path: string;
+	    size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new GguFileInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.size = source["size"];
+	    }
+	}
 	export class HuggingFaceModel {
 	    id: string;
 	    downloads: number;
