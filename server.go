@@ -244,6 +244,7 @@ func (a *App) StartLlamaServer(config ServerConfig) error {
 
 	// Create the command
 	cmd := exec.Command(serverPath, args...)
+	configureHiddenCommandWindow(cmd)
 
 	// Capture stdout/stderr
 	stdoutPipe, err := cmd.StdoutPipe()
