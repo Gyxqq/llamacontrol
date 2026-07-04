@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 )
 
@@ -57,18 +58,19 @@ func (a *App) StartModelDownload(req DownloadRequest) error {
 	// Create or update model record
 	now := time.Now().UTC().Format(time.RFC3339)
 	record := ModelRecord{
-		ID:              id,
-		DisplayName:     req.DisplayName,
-		RepoID:          req.RepoID,
-		Filename:        req.Filename,
-		Revision:        req.Revision,
-		LocalPath:       a.modelFilePath(id),
-		SizeBytes:       0,
-		DownloadedBytes: 0,
-		State:           "downloading",
-		Error:           "",
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		ID:                id,
+		DisplayName:       req.DisplayName,
+		RepoID:            req.RepoID,
+		Filename:          req.Filename,
+		Revision:          req.Revision,
+		LocalPath:         a.modelFilePath(id),
+		SizeBytes:         0,
+		DownloadedBytes:   0,
+		DownloadStartedAt: now,
+		State:             "downloading",
+		Error:             "",
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 
 	if idx := a.findModel(id); idx >= 0 {
@@ -154,10 +156,20 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 
 	// Download with progress tracking
 	buf := make([]byte, 32*1024) // 32KB buffer
-	var downloaded int64
+	var downloaded atomic.Int64
 	var lastSave int64 // last time we saved metadata (bytes written)
+	startedAt := time.Now()
+	startedAtText := startedAt.UTC().Format(time.RFC3339)
 	progressTicker := time.NewTicker(500 * time.Millisecond)
 	defer progressTicker.Stop()
+
+	a.mu.Lock()
+	if idx := a.findModel(id); idx >= 0 {
+		a.models[idx].DownloadStartedAt = startedAtText
+		a.models[idx].UpdatedAt = startedAtText
+		a.saveMetadata()
+	}
+	a.mu.Unlock()
 
 	// Channel to signal completion
 	done := make(chan error, 1)
@@ -178,7 +190,7 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 						done <- fmt.Errorf("写入文件失败: %w", writeErr)
 						return
 					}
-					downloaded += int64(n)
+					downloaded.Add(int64(n))
 				}
 				if readErr != nil {
 					if readErr == io.EOF {
@@ -216,11 +228,12 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 
 			// Get actual file size
 			info, _ := os.Stat(finalPath)
+			currentDownloaded := downloaded.Load()
 			var actualSize int64
 			if info != nil {
 				actualSize = info.Size()
 			} else {
-				actualSize = downloaded
+				actualSize = currentDownloaded
 			}
 
 			// Update metadata
@@ -230,6 +243,9 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 				a.models[idx].SizeBytes = actualSize
 				a.models[idx].DownloadedBytes = actualSize
 				a.models[idx].LocalPath = finalPath
+				a.models[idx].DownloadSpeedBytesPerSecond = 0
+				a.models[idx].DownloadElapsedSeconds = int64(time.Since(startedAt).Seconds())
+				a.models[idx].DownloadRemainingSeconds = 0
 				a.models[idx].Error = ""
 				a.models[idx].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 				a.saveMetadata()
@@ -241,20 +257,27 @@ func (a *App) downloadModel(ctx context.Context, id string, req DownloadRequest)
 			return
 
 		case <-progressTicker.C:
+			currentDownloaded := downloaded.Load()
+			speed, elapsed, remaining := downloadStats(currentDownloaded, totalSize, startedAt)
+
 			// Update progress in metadata
-			if downloaded-lastSave > 100*1024 { // Save every 100KB
-				a.mu.Lock()
-				if idx := a.findModel(id); idx >= 0 {
-					a.models[idx].DownloadedBytes = downloaded
-					if totalSize > 0 {
-						a.models[idx].SizeBytes = totalSize
-					}
-					a.models[idx].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-					a.saveMetadata()
+			a.mu.Lock()
+			if idx := a.findModel(id); idx >= 0 {
+				a.models[idx].DownloadedBytes = currentDownloaded
+				a.models[idx].DownloadSpeedBytesPerSecond = speed
+				a.models[idx].DownloadElapsedSeconds = elapsed
+				a.models[idx].DownloadRemainingSeconds = remaining
+				if totalSize > 0 {
+					a.models[idx].SizeBytes = totalSize
 				}
-				a.mu.Unlock()
-				lastSave = downloaded
+				a.models[idx].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+
+				if currentDownloaded-lastSave > 100*1024 { // Save every 100KB
+					a.saveMetadata()
+					lastSave = currentDownloaded
+				}
 			}
+			a.mu.Unlock()
 		}
 	}
 }
@@ -273,6 +296,8 @@ func (a *App) failDownload(id string, errMsg string) {
 	if idx := a.findModel(id); idx >= 0 {
 		a.models[idx].State = "failed"
 		a.models[idx].Error = errMsg
+		a.models[idx].DownloadSpeedBytesPerSecond = 0
+		a.models[idx].DownloadRemainingSeconds = 0
 		a.models[idx].UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 		a.saveMetadata()
 	}

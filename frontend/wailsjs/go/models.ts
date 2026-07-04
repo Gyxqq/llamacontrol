@@ -72,6 +72,10 @@ export namespace main {
 	    assetName: string;
 	    totalBytes: number;
 	    downloadedBytes: number;
+	    downloadStartedAt: string;
+	    downloadSpeedBytesPerSecond: number;
+	    downloadElapsedSeconds: number;
+	    downloadRemainingSeconds: number;
 	    completed: boolean;
 	    error: string;
 	    found: boolean;
@@ -81,6 +85,10 @@ export namespace main {
 	    cudaAssetName: string;
 	    cudaTotalBytes: number;
 	    cudaDownloadedBytes: number;
+	    cudaDownloadStartedAt: string;
+	    cudaDownloadSpeedBytesPerSecond: number;
+	    cudaDownloadElapsedSeconds: number;
+	    cudaDownloadRemainingSeconds: number;
 	    cudaCompleted: boolean;
 	    cudaError: string;
 	
@@ -95,6 +103,10 @@ export namespace main {
 	        this.assetName = source["assetName"];
 	        this.totalBytes = source["totalBytes"];
 	        this.downloadedBytes = source["downloadedBytes"];
+	        this.downloadStartedAt = source["downloadStartedAt"];
+	        this.downloadSpeedBytesPerSecond = source["downloadSpeedBytesPerSecond"];
+	        this.downloadElapsedSeconds = source["downloadElapsedSeconds"];
+	        this.downloadRemainingSeconds = source["downloadRemainingSeconds"];
 	        this.completed = source["completed"];
 	        this.error = source["error"];
 	        this.found = source["found"];
@@ -104,6 +116,10 @@ export namespace main {
 	        this.cudaAssetName = source["cudaAssetName"];
 	        this.cudaTotalBytes = source["cudaTotalBytes"];
 	        this.cudaDownloadedBytes = source["cudaDownloadedBytes"];
+	        this.cudaDownloadStartedAt = source["cudaDownloadStartedAt"];
+	        this.cudaDownloadSpeedBytesPerSecond = source["cudaDownloadSpeedBytesPerSecond"];
+	        this.cudaDownloadElapsedSeconds = source["cudaDownloadElapsedSeconds"];
+	        this.cudaDownloadRemainingSeconds = source["cudaDownloadRemainingSeconds"];
 	        this.cudaCompleted = source["cudaCompleted"];
 	        this.cudaError = source["cudaError"];
 	    }
@@ -149,6 +165,10 @@ export namespace main {
 	    localPath: string;
 	    sizeBytes: number;
 	    downloadedBytes: number;
+	    downloadStartedAt: string;
+	    downloadSpeedBytesPerSecond: number;
+	    downloadElapsedSeconds: number;
+	    downloadRemainingSeconds: number;
 	    state: string;
 	    error: string;
 	    createdAt: string;
@@ -168,6 +188,10 @@ export namespace main {
 	        this.localPath = source["localPath"];
 	        this.sizeBytes = source["sizeBytes"];
 	        this.downloadedBytes = source["downloadedBytes"];
+	        this.downloadStartedAt = source["downloadStartedAt"];
+	        this.downloadSpeedBytesPerSecond = source["downloadSpeedBytesPerSecond"];
+	        this.downloadElapsedSeconds = source["downloadElapsedSeconds"];
+	        this.downloadRemainingSeconds = source["downloadRemainingSeconds"];
 	        this.state = source["state"];
 	        this.error = source["error"];
 	        this.createdAt = source["createdAt"];

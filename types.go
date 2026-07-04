@@ -64,18 +64,22 @@ type serverState struct {
 
 // ModelRecord represents a downloaded or downloading model
 type ModelRecord struct {
-	ID              string `json:"id"`
-	DisplayName     string `json:"displayName"`
-	RepoID          string `json:"repoId"`
-	Filename        string `json:"filename"`
-	Revision        string `json:"revision"`
-	LocalPath       string `json:"localPath"`
-	SizeBytes       int64  `json:"sizeBytes"`
-	DownloadedBytes int64  `json:"downloadedBytes"`
-	State           string `json:"state"` // "missing" | "downloading" | "ready" | "failed"
-	Error           string `json:"error"`
-	CreatedAt       string `json:"createdAt"`
-	UpdatedAt       string `json:"updatedAt"`
+	ID                          string `json:"id"`
+	DisplayName                 string `json:"displayName"`
+	RepoID                      string `json:"repoId"`
+	Filename                    string `json:"filename"`
+	Revision                    string `json:"revision"`
+	LocalPath                   string `json:"localPath"`
+	SizeBytes                   int64  `json:"sizeBytes"`
+	DownloadedBytes             int64  `json:"downloadedBytes"`
+	DownloadStartedAt           string `json:"downloadStartedAt"`
+	DownloadSpeedBytesPerSecond int64  `json:"downloadSpeedBytesPerSecond"`
+	DownloadElapsedSeconds      int64  `json:"downloadElapsedSeconds"`
+	DownloadRemainingSeconds    int64  `json:"downloadRemainingSeconds"`
+	State                       string `json:"state"` // "missing" | "downloading" | "ready" | "failed"
+	Error                       string `json:"error"`
+	CreatedAt                   string `json:"createdAt"`
+	UpdatedAt                   string `json:"updatedAt"`
 }
 
 // DownloadRequest is sent by the frontend to start a model download
@@ -140,24 +144,32 @@ type LlamaServerInfo struct {
 
 // LlamaServerDownloadProgress tracks llama.cpp download progress for the frontend.
 type LlamaServerDownloadProgress struct {
-	Downloading     bool   `json:"downloading"`
-	ReleaseTag      string `json:"releaseTag"`
-	AssetName       string `json:"assetName"`
-	TotalBytes      int64  `json:"totalBytes"`
-	DownloadedBytes int64  `json:"downloadedBytes"`
-	Completed       bool   `json:"completed"`
-	Error           string `json:"error"`
-	Found           bool   `json:"found"`
-	Version         string `json:"version"`
-	Path            string `json:"path"`
+	Downloading                 bool   `json:"downloading"`
+	ReleaseTag                  string `json:"releaseTag"`
+	AssetName                   string `json:"assetName"`
+	TotalBytes                  int64  `json:"totalBytes"`
+	DownloadedBytes             int64  `json:"downloadedBytes"`
+	DownloadStartedAt           string `json:"downloadStartedAt"`
+	DownloadSpeedBytesPerSecond int64  `json:"downloadSpeedBytesPerSecond"`
+	DownloadElapsedSeconds      int64  `json:"downloadElapsedSeconds"`
+	DownloadRemainingSeconds    int64  `json:"downloadRemainingSeconds"`
+	Completed                   bool   `json:"completed"`
+	Error                       string `json:"error"`
+	Found                       bool   `json:"found"`
+	Version                     string `json:"version"`
+	Path                        string `json:"path"`
 
 	// CUDA Runtime download progress
-	CudaDownloading     bool   `json:"cudaDownloading"`
-	CudaAssetName       string `json:"cudaAssetName"`
-	CudaTotalBytes      int64  `json:"cudaTotalBytes"`
-	CudaDownloadedBytes int64  `json:"cudaDownloadedBytes"`
-	CudaCompleted       bool   `json:"cudaCompleted"`
-	CudaError           string `json:"cudaError"`
+	CudaDownloading                 bool   `json:"cudaDownloading"`
+	CudaAssetName                   string `json:"cudaAssetName"`
+	CudaTotalBytes                  int64  `json:"cudaTotalBytes"`
+	CudaDownloadedBytes             int64  `json:"cudaDownloadedBytes"`
+	CudaDownloadStartedAt           string `json:"cudaDownloadStartedAt"`
+	CudaDownloadSpeedBytesPerSecond int64  `json:"cudaDownloadSpeedBytesPerSecond"`
+	CudaDownloadElapsedSeconds      int64  `json:"cudaDownloadElapsedSeconds"`
+	CudaDownloadRemainingSeconds    int64  `json:"cudaDownloadRemainingSeconds"`
+	CudaCompleted                   bool   `json:"cudaCompleted"`
+	CudaError                       string `json:"cudaError"`
 }
 
 // LlamaServerRelease represents a llama.cpp GitHub release for the frontend.

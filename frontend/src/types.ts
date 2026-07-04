@@ -14,6 +14,10 @@ export interface ModelRecord {
   localPath?: string;
   sizeBytes?: number;
   downloadedBytes?: number;
+  downloadStartedAt?: string;
+  downloadSpeedBytesPerSecond?: number;
+  downloadElapsedSeconds?: number;
+  downloadRemainingSeconds?: number;
 
   state: ModelState;
   error?: string;
@@ -90,6 +94,10 @@ export interface LlamaServerDownloadProgress {
   assetName: string;
   totalBytes: number;
   downloadedBytes: number;
+  downloadStartedAt?: string;
+  downloadSpeedBytesPerSecond: number;
+  downloadElapsedSeconds: number;
+  downloadRemainingSeconds: number;
   completed: boolean;
   error?: string;
   found: boolean;
@@ -100,6 +108,10 @@ export interface LlamaServerDownloadProgress {
   cudaAssetName: string;
   cudaTotalBytes: number;
   cudaDownloadedBytes: number;
+  cudaDownloadStartedAt?: string;
+  cudaDownloadSpeedBytesPerSecond: number;
+  cudaDownloadElapsedSeconds: number;
+  cudaDownloadRemainingSeconds: number;
   cudaCompleted: boolean;
   cudaError?: string;
 }

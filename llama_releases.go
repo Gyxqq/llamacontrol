@@ -171,10 +171,12 @@ func (a *App) DownloadLlamaServerRelease(releaseTag string, assetName string) er
 	}
 
 	// Initialize progress
+	startedAt := time.Now()
 	a.llamaDlProgress = LlamaServerDownloadProgress{
-		Downloading: true,
-		ReleaseTag:  releaseTag,
-		AssetName:   assetName,
+		Downloading:       true,
+		ReleaseTag:        releaseTag,
+		AssetName:         assetName,
+		DownloadStartedAt: startedAt.UTC().Format(time.RFC3339),
 	}
 	a.mu.Unlock()
 
@@ -289,7 +291,12 @@ func (a *App) downloadLlamaServerRelease(releaseTag string, assetName string) {
 	// Download with progress tracking
 	buf := make([]byte, 32*1024) // 32KB buffer
 	var downloaded int64
+	startedAt := time.Now()
 	lastUpdate := time.Now()
+
+	a.mu.Lock()
+	a.llamaDlProgress.DownloadStartedAt = startedAt.UTC().Format(time.RFC3339)
+	a.mu.Unlock()
 
 	for {
 		n, readErr := dlResp.Body.Read(buf)
@@ -304,8 +311,12 @@ func (a *App) downloadLlamaServerRelease(releaseTag string, assetName string) {
 
 			// Update progress at most every 200ms
 			if time.Since(lastUpdate) > 200*time.Millisecond {
+				speed, elapsed, remaining := downloadStats(downloaded, totalSize, startedAt)
 				a.mu.Lock()
 				a.llamaDlProgress.DownloadedBytes = downloaded
+				a.llamaDlProgress.DownloadSpeedBytesPerSecond = speed
+				a.llamaDlProgress.DownloadElapsedSeconds = elapsed
+				a.llamaDlProgress.DownloadRemainingSeconds = remaining
 				a.mu.Unlock()
 				lastUpdate = time.Now()
 			}
@@ -324,8 +335,12 @@ func (a *App) downloadLlamaServerRelease(releaseTag string, assetName string) {
 	outFile.Close()
 
 	// Final progress update
+	speed, elapsed, _ := downloadStats(downloaded, totalSize, startedAt)
 	a.mu.Lock()
 	a.llamaDlProgress.DownloadedBytes = downloaded
+	a.llamaDlProgress.DownloadSpeedBytesPerSecond = speed
+	a.llamaDlProgress.DownloadElapsedSeconds = elapsed
+	a.llamaDlProgress.DownloadRemainingSeconds = 0
 	a.mu.Unlock()
 
 	log.Infof("llama: downloaded %d bytes to %s", downloaded, archivePath)
@@ -412,6 +427,8 @@ func (a *App) downloadLlamaServerRelease(releaseTag string, assetName string) {
 	a.llamaDlProgress.Downloading = false
 	a.llamaDlProgress.Completed = true
 	a.llamaDlProgress.Error = ""
+	a.llamaDlProgress.DownloadSpeedBytesPerSecond = 0
+	a.llamaDlProgress.DownloadRemainingSeconds = 0
 	a.llamaDlProgress.Found = true
 	a.llamaDlProgress.Version = a.readInstalledVersion()
 	a.llamaDlProgress.Path = installedPath
@@ -430,6 +447,8 @@ func (a *App) failLlamaDownload(errMsg string) {
 	a.llamaDlProgress.Downloading = false
 	a.llamaDlProgress.Completed = false
 	a.llamaDlProgress.Error = errMsg
+	a.llamaDlProgress.DownloadSpeedBytesPerSecond = 0
+	a.llamaDlProgress.DownloadRemainingSeconds = 0
 }
 
 // GetLlamaServerDownloadProgress returns the current llama.cpp download progress.

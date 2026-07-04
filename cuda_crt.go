@@ -64,11 +64,16 @@ func (a *App) setCudaCrtError(errMsg string) {
 func (a *App) downloadCudaCrt(cudaAsset ghReleaseAsset, tempDir string) {
 	log.Infof("llama: downloading CUDA CRT asset: %s (%d bytes)", cudaAsset.Name, cudaAsset.Size)
 
+	startedAt := time.Now()
 	a.mu.Lock()
 	a.llamaDlProgress.CudaDownloading = true
 	a.llamaDlProgress.CudaAssetName = cudaAsset.Name
 	a.llamaDlProgress.CudaTotalBytes = cudaAsset.Size
 	a.llamaDlProgress.CudaDownloadedBytes = 0
+	a.llamaDlProgress.CudaDownloadStartedAt = startedAt.UTC().Format(time.RFC3339)
+	a.llamaDlProgress.CudaDownloadSpeedBytesPerSecond = 0
+	a.llamaDlProgress.CudaDownloadElapsedSeconds = 0
+	a.llamaDlProgress.CudaDownloadRemainingSeconds = 0
 	a.llamaDlProgress.CudaCompleted = false
 	a.llamaDlProgress.CudaError = ""
 	a.mu.Unlock()
@@ -78,6 +83,8 @@ func (a *App) downloadCudaCrt(cudaAsset ghReleaseAsset, tempDir string) {
 		a.mu.Lock()
 		a.llamaDlProgress.CudaDownloading = false
 		a.llamaDlProgress.CudaCompleted = a.llamaDlProgress.CudaError == ""
+		a.llamaDlProgress.CudaDownloadSpeedBytesPerSecond = 0
+		a.llamaDlProgress.CudaDownloadRemainingSeconds = 0
 		a.mu.Unlock()
 	}()
 
@@ -124,8 +131,12 @@ func (a *App) downloadCudaCrt(cudaAsset ghReleaseAsset, tempDir string) {
 			}
 			cudaDownloaded += int64(n)
 			if time.Since(lastUpdate) > 200*time.Millisecond {
+				speed, elapsed, remaining := downloadStats(cudaDownloaded, cudaAsset.Size, startedAt)
 				a.mu.Lock()
 				a.llamaDlProgress.CudaDownloadedBytes = cudaDownloaded
+				a.llamaDlProgress.CudaDownloadSpeedBytesPerSecond = speed
+				a.llamaDlProgress.CudaDownloadElapsedSeconds = elapsed
+				a.llamaDlProgress.CudaDownloadRemainingSeconds = remaining
 				a.mu.Unlock()
 				lastUpdate = time.Now()
 			}
@@ -143,8 +154,12 @@ func (a *App) downloadCudaCrt(cudaAsset ghReleaseAsset, tempDir string) {
 
 	outFile.Close()
 
+	speed, elapsed, _ := downloadStats(cudaDownloaded, cudaAsset.Size, startedAt)
 	a.mu.Lock()
 	a.llamaDlProgress.CudaDownloadedBytes = cudaDownloaded
+	a.llamaDlProgress.CudaDownloadSpeedBytesPerSecond = speed
+	a.llamaDlProgress.CudaDownloadElapsedSeconds = elapsed
+	a.llamaDlProgress.CudaDownloadRemainingSeconds = 0
 	a.mu.Unlock()
 
 	log.Infof("llama: downloaded CUDA CRT (%d bytes) to %s", cudaDownloaded, cudaArchivePath)

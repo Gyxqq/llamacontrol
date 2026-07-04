@@ -71,6 +71,39 @@ function formatBytes(value?: number): string {
   return `${size.toFixed(index === 0 ? 0 : 2)} ${units[index]}`;
 }
 
+function formatSpeed(value?: number): string {
+  if (!value || value <= 0) return "计算中";
+  return `${formatBytes(value)}/s`;
+}
+
+function formatDuration(seconds?: number): string {
+  if (seconds == null || seconds < 0) return "-";
+  if (seconds < 1) return "0秒";
+
+  const total = Math.floor(seconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+
+  if (hours > 0) return `${hours}时${minutes}分`;
+  if (minutes > 0) return `${minutes}分${secs}秒`;
+  return `${secs}秒`;
+}
+
+function formatEta(seconds?: number, speed?: number): string {
+  if (!speed || speed <= 0) return "-";
+  if (seconds == null || seconds <= 0) return "<1秒";
+  return formatDuration(seconds);
+}
+
+function formatDownloadStats(
+  speed?: number,
+  elapsed?: number,
+  remaining?: number,
+): string {
+  return `速度 ${formatSpeed(speed)} · 已用 ${formatDuration(elapsed)} · 预计剩余 ${formatEta(remaining, speed)}`;
+}
+
 function downloadPercent(model: ModelRecord): number {
   if (!model.sizeBytes || !model.downloadedBytes) return 0;
   return Math.max(
@@ -150,6 +183,9 @@ function App() {
     assetName: "",
     totalBytes: 0,
     downloadedBytes: 0,
+    downloadSpeedBytesPerSecond: 0,
+    downloadElapsedSeconds: 0,
+    downloadRemainingSeconds: 0,
     completed: false,
     error: "",
     found: false,
@@ -159,6 +195,9 @@ function App() {
     cudaAssetName: "",
     cudaTotalBytes: 0,
     cudaDownloadedBytes: 0,
+    cudaDownloadSpeedBytesPerSecond: 0,
+    cudaDownloadElapsedSeconds: 0,
+    cudaDownloadRemainingSeconds: 0,
     cudaCompleted: false,
     cudaError: "",
   });
@@ -475,6 +514,9 @@ function App() {
       assetName: selectedAsset,
       totalBytes: 0,
       downloadedBytes: 0,
+      downloadSpeedBytesPerSecond: 0,
+      downloadElapsedSeconds: 0,
+      downloadRemainingSeconds: 0,
       completed: false,
       error: "",
       found: false,
@@ -484,6 +526,9 @@ function App() {
       cudaAssetName: "",
       cudaTotalBytes: 0,
       cudaDownloadedBytes: 0,
+      cudaDownloadSpeedBytesPerSecond: 0,
+      cudaDownloadElapsedSeconds: 0,
+      cudaDownloadRemainingSeconds: 0,
       cudaCompleted: false,
       cudaError: "",
     });
@@ -674,10 +719,23 @@ function App() {
         />
       </div>
       <div className="downloadProgressMeta">
-        <span>
-          {llamaDlProgress.cudaError ||
-            `${formatBytes(llamaDlProgress.cudaDownloadedBytes)} / ${formatBytes(llamaDlProgress.cudaTotalBytes)}`}
-        </span>
+        {llamaDlProgress.cudaError ? (
+          <span>{llamaDlProgress.cudaError}</span>
+        ) : (
+          <span className="downloadProgressInfo">
+            <span>
+              {formatBytes(llamaDlProgress.cudaDownloadedBytes)} /{" "}
+              {formatBytes(llamaDlProgress.cudaTotalBytes)}
+            </span>
+            <span className="downloadStats">
+              {formatDownloadStats(
+                llamaDlProgress.cudaDownloadSpeedBytesPerSecond,
+                llamaDlProgress.cudaDownloadElapsedSeconds,
+                llamaDlProgress.cudaDownloadRemainingSeconds,
+              )}
+            </span>
+          </span>
+        )}
       </div>
     </div>
   ) : null;
@@ -915,9 +973,18 @@ function App() {
                 />
               </div>
               <div className="downloadProgressMeta">
-                <span>
-                  {formatBytes(model.downloadedBytes)} /{" "}
-                  {formatBytes(model.sizeBytes)}
+                <span className="downloadProgressInfo">
+                  <span>
+                    {formatBytes(model.downloadedBytes)} /{" "}
+                    {formatBytes(model.sizeBytes)}
+                  </span>
+                  <span className="downloadStats">
+                    {formatDownloadStats(
+                      model.downloadSpeedBytesPerSecond,
+                      model.downloadElapsedSeconds,
+                      model.downloadRemainingSeconds,
+                    )}
+                  </span>
                 </span>
                 <button
                   className="ghost dangerText"
@@ -954,9 +1021,18 @@ function App() {
                     />
                   </div>
                   <div className="downloadProgressMeta">
-                    <span>
-                      {formatBytes(llamaDlProgress.downloadedBytes)} /{" "}
-                      {formatBytes(llamaDlProgress.totalBytes)}
+                    <span className="downloadProgressInfo">
+                      <span>
+                        {formatBytes(llamaDlProgress.downloadedBytes)} /{" "}
+                        {formatBytes(llamaDlProgress.totalBytes)}
+                      </span>
+                      <span className="downloadStats">
+                        {formatDownloadStats(
+                          llamaDlProgress.downloadSpeedBytesPerSecond,
+                          llamaDlProgress.downloadElapsedSeconds,
+                          llamaDlProgress.downloadRemainingSeconds,
+                        )}
+                      </span>
                     </span>
                   </div>
                 </div>
@@ -1113,6 +1189,13 @@ function App() {
                       {formatBytes(selectedModel.sizeBytes)}
                     </span>
                     <span>{downloadPercent(selectedModel).toFixed(1)}%</span>
+                  </div>
+                  <div className="progressStats">
+                    {formatDownloadStats(
+                      selectedModel.downloadSpeedBytesPerSecond,
+                      selectedModel.downloadElapsedSeconds,
+                      selectedModel.downloadRemainingSeconds,
+                    )}
                   </div>
                   <div className="progress">
                     <div
