@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -109,6 +110,66 @@ func TestDownloadFileAutoFallsBackToSingleStream(t *testing.T) {
 	}
 	if !bytes.Equal(got, data) {
 		t.Fatal("downloaded fallback file content mismatch")
+	}
+}
+
+func TestDownloadFileAutoRetriesInterruptedRange(t *testing.T) {
+	data := bytes.Repeat([]byte("retry-range-"), (minParallelDownloadSize/12)+1)
+	var rangeRequests atomic.Int64
+	var mu sync.Mutex
+	interrupted := false
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Accept-Ranges", "bytes")
+		if r.Method == http.MethodHead {
+			w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+			return
+		}
+
+		start, end, ok := parseTestRange(r.Header.Get("Range"))
+		if !ok || start < 0 || end >= int64(len(data)) || start > end {
+			http.Error(w, "bad range", http.StatusRequestedRangeNotSatisfiable)
+			return
+		}
+		rangeRequests.Add(1)
+
+		mu.Lock()
+		shouldInterrupt := !interrupted && start == 0
+		if shouldInterrupt {
+			interrupted = true
+		}
+		mu.Unlock()
+
+		length := end - start + 1
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, len(data)))
+		w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
+		w.WriteHeader(http.StatusPartialContent)
+		if shouldInterrupt {
+			_, _ = w.Write(data[start : start+(length/2)])
+			return
+		}
+		_, _ = w.Write(data[start : end+1])
+	}))
+	defer server.Close()
+
+	path := filepath.Join(t.TempDir(), "model.part")
+	result, err := downloadFileAuto(t.Context(), server.Client(), server.URL, nil, path, int64(len(data)), nil)
+	if err != nil {
+		t.Fatalf("downloadFileAuto failed: %v", err)
+	}
+	if !result.Parallel {
+		t.Fatal("expected parallel download")
+	}
+	if rangeRequests.Load() <= int64(chooseDownloadWorkers(int64(len(data)))) {
+		t.Fatalf("expected an extra range request for retry, got %d", rangeRequests.Load())
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read downloaded file: %v", err)
+	}
+	if !bytes.Equal(got, data) {
+		t.Fatal("downloaded file content mismatch")
 	}
 }
 

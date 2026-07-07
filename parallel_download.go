@@ -12,13 +12,17 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const (
 	minParallelDownloadSize = 32 * 1024 * 1024
 	downloadChunkSize       = 16 * 1024 * 1024
 	maxDownloadWorkers      = 16
+	maxDownloadRangeRetries = 5
 )
+
+var errRangeIncomplete = errors.New("range response ended before requested bytes were read")
 
 type downloadProgressFunc func(downloaded, total int64)
 
@@ -234,32 +238,64 @@ func downloadFileParallel(ctx context.Context, client *http.Client, url string, 
 }
 
 func downloadRange(ctx context.Context, client *http.Client, url string, headers map[string]string, out *os.File, start, end int64, buf []byte, downloaded *atomic.Int64, total int64, progress downloadProgressFunc) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	applyDownloadHeaders(req, headers)
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusPartialContent {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
-		return fmt.Errorf("Range 请求返回 %d: %s", resp.StatusCode, string(body))
-	}
-
 	offset := start
+	attempts := 0
+
+	for offset <= end {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return err
+		}
+		applyDownloadHeaders(req, headers)
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", offset, end))
+
+		resp, err := client.Do(req)
+		if err != nil {
+			if isRetryableDownloadError(err) && attempts < maxDownloadRangeRetries {
+				attempts++
+				sleepBeforeRangeRetry(ctx, attempts)
+				continue
+			}
+			return err
+		}
+
+		if resp.StatusCode != http.StatusPartialContent {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+			resp.Body.Close()
+			return fmt.Errorf("Range 请求返回 %d: %s", resp.StatusCode, string(body))
+		}
+
+		readErr := copyRangeResponse(resp.Body, out, &offset, end, buf, downloaded, total, progress)
+		resp.Body.Close()
+		if readErr == nil {
+			attempts = 0
+			continue
+		}
+		if errors.Is(readErr, context.Canceled) || errors.Is(readErr, context.DeadlineExceeded) {
+			return readErr
+		}
+		if attempts >= maxDownloadRangeRetries {
+			return fmt.Errorf("Range 下载不完整: %d-%d got %d bytes: %w", start, end, offset-start, readErr)
+		}
+		attempts++
+		log.Warnf("download: range %d-%d interrupted at %d bytes, retrying (%d/%d): %v", start, end, offset-start, attempts, maxDownloadRangeRetries, readErr)
+		sleepBeforeRangeRetry(ctx, attempts)
+	}
+
+	return nil
+}
+
+func copyRangeResponse(body io.Reader, out *os.File, offset *int64, end int64, buf []byte, downloaded *atomic.Int64, total int64, progress downloadProgressFunc) error {
 	for {
-		n, readErr := resp.Body.Read(buf)
+		n, readErr := body.Read(buf)
 		if n > 0 {
-			if _, writeErr := out.WriteAt(buf[:n], offset); writeErr != nil {
+			if _, writeErr := out.WriteAt(buf[:n], *offset); writeErr != nil {
 				return writeErr
 			}
-			offset += int64(n)
+			*offset += int64(n)
 			current := downloaded.Add(int64(n))
 			if progress != nil {
 				progress(current, total)
@@ -267,13 +303,32 @@ func downloadRange(ctx context.Context, client *http.Client, url string, headers
 		}
 		if readErr != nil {
 			if readErr == io.EOF {
-				if offset != end+1 {
-					return fmt.Errorf("Range 下载不完整: %d-%d got %d bytes", start, end, offset-start)
+				if *offset <= end {
+					return errRangeIncomplete
 				}
 				return nil
 			}
 			return readErr
 		}
+	}
+}
+
+func isRetryableDownloadError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, io.EOF) ||
+		errors.Is(err, context.DeadlineExceeded)
+}
+
+func sleepBeforeRangeRetry(ctx context.Context, attempt int) {
+	delay := time.Duration(attempt) * 300 * time.Millisecond
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+	case <-timer.C:
 	}
 }
 
