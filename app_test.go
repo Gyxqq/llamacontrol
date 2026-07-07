@@ -442,6 +442,105 @@ func TestValidateDownloadRequest(t *testing.T) {
 	app.CancelModelDownload(modelID("org/repo", "test.gguf"))
 }
 
+func TestImportModelFileCopiesAndRegistersModel(t *testing.T) {
+	dir := t.TempDir()
+	modelsDir := filepath.Join(dir, "models")
+	if err := os.MkdirAll(modelsDir, 0755); err != nil {
+		t.Fatalf("failed to create models dir: %v", err)
+	}
+
+	sourcePath := filepath.Join(dir, "TinyModel.Q4_K_M.gguf")
+	sourceData := []byte("fake gguf model data")
+	if err := os.WriteFile(sourcePath, sourceData, 0644); err != nil {
+		t.Fatalf("failed to create source model: %v", err)
+	}
+
+	app := &App{
+		httpClient:      &http.Client{},
+		modelsDir:       modelsDir,
+		metadataPath:    filepath.Join(dir, "metadata.json"),
+		models:          []ModelRecord{},
+		activeDownloads: make(map[string]*downloadTask),
+		serverState:     &serverState{},
+	}
+
+	record, err := app.importModelFile(sourcePath)
+	if err != nil {
+		t.Fatalf("importModelFile failed: %v", err)
+	}
+
+	if record.State != "ready" {
+		t.Fatalf("expected imported model to be ready, got %q", record.State)
+	}
+	if record.RepoID != "manual" {
+		t.Fatalf("expected RepoID manual, got %q", record.RepoID)
+	}
+	if record.DisplayName != "TinyModel.Q4_K_M" {
+		t.Fatalf("unexpected display name: %q", record.DisplayName)
+	}
+	if record.SizeBytes != int64(len(sourceData)) || record.DownloadedBytes != int64(len(sourceData)) {
+		t.Fatalf("unexpected size metadata: size=%d downloaded=%d", record.SizeBytes, record.DownloadedBytes)
+	}
+	if record.LocalPath == sourcePath {
+		t.Fatal("expected model to be copied into managed models directory")
+	}
+
+	importedData, err := os.ReadFile(record.LocalPath)
+	if err != nil {
+		t.Fatalf("failed to read imported model: %v", err)
+	}
+	if string(importedData) != string(sourceData) {
+		t.Fatal("imported model content mismatch")
+	}
+	if len(app.models) != 1 {
+		t.Fatalf("expected 1 model in memory, got %d", len(app.models))
+	}
+	if _, err := os.Stat(app.metadataPath); err != nil {
+		t.Fatalf("expected metadata to be saved: %v", err)
+	}
+}
+
+func TestImportModelFileUsesUniqueIDForDuplicateFilename(t *testing.T) {
+	dir := t.TempDir()
+	modelsDir := filepath.Join(dir, "models")
+	if err := os.MkdirAll(modelsDir, 0755); err != nil {
+		t.Fatalf("failed to create models dir: %v", err)
+	}
+
+	sourcePath := filepath.Join(dir, "same.gguf")
+	if err := os.WriteFile(sourcePath, []byte("fake gguf"), 0644); err != nil {
+		t.Fatalf("failed to create source model: %v", err)
+	}
+
+	app := &App{
+		httpClient:      &http.Client{},
+		modelsDir:       modelsDir,
+		metadataPath:    filepath.Join(dir, "metadata.json"),
+		models:          []ModelRecord{},
+		activeDownloads: make(map[string]*downloadTask),
+		serverState:     &serverState{},
+	}
+
+	first, err := app.importModelFile(sourcePath)
+	if err != nil {
+		t.Fatalf("first import failed: %v", err)
+	}
+	second, err := app.importModelFile(sourcePath)
+	if err != nil {
+		t.Fatalf("second import failed: %v", err)
+	}
+
+	if first.ID == second.ID {
+		t.Fatalf("expected unique IDs for duplicate imports, both were %q", first.ID)
+	}
+	if first.LocalPath == second.LocalPath {
+		t.Fatalf("expected unique local paths for duplicate imports, both were %q", first.LocalPath)
+	}
+	if len(app.models) != 2 {
+		t.Fatalf("expected 2 models, got %d", len(app.models))
+	}
+}
+
 // ──────────────────────────────────────────────
 // inferModelName
 // ──────────────────────────────────────────────

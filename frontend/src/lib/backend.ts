@@ -63,6 +63,10 @@ export const backend = {
     return call<void>("DeleteModel", modelId);
   },
 
+  ImportModelFile(): Promise<ModelRecord> {
+    return call<ModelRecord>("ImportModelFile");
+  },
+
   GetServerStatus(): Promise<ServerStatus> {
     return call<ServerStatus>("GetServerStatus");
   },

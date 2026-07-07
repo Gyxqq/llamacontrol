@@ -22,6 +22,8 @@ export function GetServerStatus():Promise<main.ServerStatus>;
 
 export function HideToTray():Promise<void>;
 
+export function ImportModelFile():Promise<main.ModelRecord>;
+
 export function ListLlamaReleaseAssets(arg1:string):Promise<Array<main.LlamaReleaseAsset>>;
 
 export function ListLlamaServerReleases():Promise<Array<main.LlamaServerRelease>>;

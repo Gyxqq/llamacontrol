@@ -42,6 +42,10 @@ export function HideToTray() {
   return window['go']['main']['App']['HideToTray']();
 }
 
+export function ImportModelFile() {
+  return window['go']['main']['App']['ImportModelFile']();
+}
+
 export function ListLlamaReleaseAssets(arg1) {
   return window['go']['main']['App']['ListLlamaReleaseAssets'](arg1);
 }

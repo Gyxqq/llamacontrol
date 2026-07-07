@@ -434,6 +434,27 @@ function App() {
     }
   }
 
+  async function importModelFile() {
+    try {
+      setError("");
+      setOperation("正在导入模型");
+      const model = await backend.ImportModelFile();
+      setSelectedModelId(model.id);
+      setServerConfig((old) => ({
+        ...old,
+        modelId: model.id,
+      }));
+      await refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes("已取消导入")) {
+        setError(message);
+      }
+    } finally {
+      setOperation("");
+    }
+  }
+
   async function startServer() {
     setError("");
 
@@ -799,6 +820,13 @@ function App() {
               disabled={!backendReady}
             >
               打开模型目录
+            </button>
+            <button
+              className="ghost"
+              onClick={() => void importModelFile()}
+              disabled={!backendReady || loading}
+            >
+              导入模型
             </button>
           </div>
         </header>
@@ -1233,7 +1261,7 @@ function App() {
 
           {models.length === 0 && (
             <div className="empty">
-              还没有模型。先填入 Hugging Face repo 和 GGUF 文件名下载。
+              还没有模型。可以从 Hugging Face 下载，或导入本地 GGUF 文件。
             </div>
           )}
 
