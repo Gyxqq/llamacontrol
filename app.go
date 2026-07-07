@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"net/http"
 	"os"
 	"path/filepath"
 
@@ -13,9 +12,7 @@ import (
 func NewApp() *App {
 	log.Debug("app: instance created")
 	return &App{
-		httpClient: &http.Client{
-			Timeout: 0, // no timeout — downloads can be very long
-		},
+		httpClient:      newHTTPClient(),
 		activeDownloads: make(map[string]*downloadTask),
 		serverState:     &serverState{},
 	}
